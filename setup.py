@@ -14,6 +14,9 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="",
     packages=setuptools.find_packages(),
+    package_data={
+        'mercuriuslite': ['conf/config.case.ini', 'conf/config.logging.ini'],
+    }, 
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

@@ -1,4 +1,4 @@
-#pip uninstall lavender_mist 
+#pip uninstall mercuriuslite 
 #rm -rf build dist *egg-info
 python setup.py sdist
 pip install .
