@@ -1,0 +1,14 @@
+# Trading
+TRAD_DAYS={
+    'day':1, 'week':5, 'mon':21, 'yr':252
+}
+TRAD_DAYS_PER_YEAR=252
+TRAD_DAYS_PER_MONTH=21
+TRAD_DAYS_PER_WEEK=5
+NO_RISK_RETURN=0.03 # default
+
+# Figures
+SM_SIZE = 8
+MID_SIZE = 12
+LARGE_SIZE = 14
+DPI=240

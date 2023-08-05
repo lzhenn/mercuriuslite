@@ -16,8 +16,8 @@
 
 """
 # ---imports---
-import logging
-
+import logging, datetime
+from . import const
 
 # ---Module regime consts and variables---
 print_prefix='lib.utils>>'
@@ -45,6 +45,28 @@ def write_log(msg, lvl=20):
 
     logging.log(lvl, msg)
 
+
+def parse_lead(ytgt):
+    '''
+    parse string with timestamp wildcard to datetime object
+    '''
+    if len(ytgt.split('_'))==1:
+        lead_str='1day'
+    else:
+        lead_str=ytgt.split('_')[-1]
+    
+    ytgt=ytgt.split('_')[0]
+    
+    for key_wd in ['day','week','mon','yr']:
+        if key_wd in lead_str:
+            return ytgt, int(lead_str.replace(key_wd,''))*const.TRAD_DAYS[key_wd]
+    throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
+
+def parse_intime(dt_str):
+    if not(dt_str=='0'):
+        return datetime.datetime.strptime(dt_str, '%Y%m%d')
+    else: 
+        return dt_str 
 def parse_tswildcard(tgt_time, wildcard):
     '''
     parse string with timestamp wildcard to datetime object
@@ -57,6 +79,8 @@ def parse_tswildcard(tgt_time, wildcard):
         else:
             parsed_str+=seg
     return parsed_str
+
+
 
 
 # ---Unit test---

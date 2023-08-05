@@ -44,7 +44,7 @@ class Mercurius:
 
     def as_spider(self):
         from .lib import spider
-        tickers=self.cfg['SPIDER']['tickers'].split(',')
+        tickers=self.cfg['SPIDER']['tickers'].replace(' ','').split(',')
         archive_dir=self.cfg['SPIDER']['archive_dir']
         for ticker in tickers:
             utils.write_log(f'Fetching data for {ticker}')

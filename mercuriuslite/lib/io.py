@@ -4,56 +4,69 @@
 from sklearn.model_selection import train_test_split
 import numpy as np
 import pandas as pd
-import datetime
-from . import utils
+import datetime, os
+from . import utils, cfgparser, mathlib
 
 # ---Module regime consts and variables---
 print_prefix='lib.io>>'
 
+date_parser = lambda date: datetime.datetime.strptime(
+    date.split()[0],'%Y-%m-%d')
+
 # ---Classes and Functions---
        
-def load_xy(Xnames, Yfile, Ytgt, train_start_time, train_end_time):
+def load_xy(
+        Xfile, Xnames, Yfile, Ytgt, Ylead, train_start_time, train_end_time):
     
     Y, train_start_time, train_end_time =load_y(
         Yfile, Ytgt, train_start_time, train_end_time)
     
-    if Xnames == 'na':
-        X = np.zeros(Y.shape)
-    else:
-        X=load_x(Xnames)
+    X=load_x(
+        Y, Xfile, Xnames, train_start_time, train_end_time)
     
+    X, Y = match_xy(X,Y,Ylead)
     check_xy(X,Y)
 
     return X, Y, train_start_time, train_end_time
     #self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
-def load_y(Yfile, Ytgt, start_time, end_time, call_from='train'):
+def match_xy(X,Y,lead_days):
+    Y=Y[lead_days:]/Y[:-lead_days]-1
+    X=X[:-lead_days]
+    return X, Y
+def load_y(Yfile, Ytgt, start_time='0', end_time='0', call_from='train'):
     ''' select y according to prescribed method '''
-    parser = lambda date: datetime.datetime.strptime(date.split()[0],'%Y-%m-%d')
     lb_all=pd.read_csv(Yfile, 
-        parse_dates=True, date_parser=parser, index_col='Date')
+        parse_dates=True, date_parser=date_parser, index_col='Date')
     if start_time == '0':
-        start_time=lb_all.index[0].strftime('%Y%m%d')
+        start_time=lb_all.index[0]
     if end_time == '0':
-        end_time=lb_all.index[-1].strftime('%Y%m%d')
+        end_time=lb_all.index[-1]
     Y=lb_all[Ytgt][start_time:end_time].values
     return Y, start_time, end_time
 
-def load_x(self,call_from='train'):
+def load_x(Y, Xfile, Xnames, start_time='0', end_time='0', call_from='train'):
     ''' load feature lib '''
-    parser = lambda date: datetime.datetime.strptime(date, '%Y-%m-%d')
-    if call_from == 'train':
-        flib_all=pd.read_csv(
-                'feature_lib/'+self.feature_lib_file, 
-                parse_dates=True, date_parser=parser, index_col='time')
-    elif call_from=='cast':
-        flib_all=pd.read_csv(
-                'inferX/'+self.infer_file, 
-                parse_dates=True, date_parser=parser, index_col='time')
+    if Xfile == 'na':
+        X=gen_auto_x(Y, Xnames)
+    return X
+def gen_auto_x(Y, Xnames):
+    Xnames=Xnames.replace(' ','').split(',')
+    X = np.zeros((len(Y), len(Xnames)))
+    for i, name in enumerate(Xnames):
+        k = int(name.split('_')[1])
+        if name.startswith('mtm_'):
+            X[k:, i] = (Y[k:] - Y[:-k])/Y[k:]
+        elif name.startswith('ma_'):
+            X[:, i] = mathlib.ma(Y, k) 
+        elif name.startswith('dma_'):
+            X[:, i] = 1-mathlib.ma(Y, k)/Y
+        
+        else:
+            raise ValueError('Invalid feature name: {}'.format(name))
+    return X
+    tickers=self.cfg['SPIDER']['tickers'].split(',')    
 
-
-    self.select_x(flib_all, call_from)
-    
 def select_x(self, flib, call_from):
     ''' select x according to prescribed method '''
     if call_from == 'train':
@@ -71,7 +84,31 @@ def check_xy(X,Y):
     if X.shape[0] != Y.shape[0]:
         utils.throw_error(print_prefix+'Size of dim0 in X and Y does not match!')
     else:
-        utils.write_log(print_prefix+'Sample Size:'+str(Y.shape))
+        utils.write_log(
+            f'{print_prefix}Y Size:{Y.shape},first five:{Y[:5]}, and last five:{Y[-5:]}')
+        utils.write_log(
+            f'{print_prefix}X Size:{X.shape},first five:{X[:5].T}, and last five:{X[-5:].T}')
+def load_model_npy(oculus,baseline=False):
+    archive_dir=oculus.archive_dir
+    model_name=oculus.cfg['PREDICTOR']['model_name']
+    if baseline:
+        model = np.load(
+            os.path.join(archive_dir,'plainhist.npy'))
+    else:
+        if not(hasattr(oculus,'model')):
+            model = np.load(
+                os.path.join(archive_dir,model_name+'.npy'))
+        else:
+            model=oculus.model
+    return model
+
+def savmatR(oculus):
+    model_name=oculus.cfg['PREDICTOR']['model_name']
+    archive_dir=oculus.archive_dir
+    np.save(os.path.join(archive_dir,model_name+'.npy'), oculus.model)
+    cfgparser.write_cfg(
+        oculus.cfg, os.path.join(archive_dir,model_name+'.ini'))
+    utils.write_log(f'{print_prefix}{model_name} Archive Done!')
 
 
 

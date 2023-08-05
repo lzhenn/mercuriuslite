@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """model zoo"""
+
+# ****************Available models*****************
+#
+# PlainHist: plain historical evolution
+# SVPDF: single variable PDF
+#
+# ****************Available models*****************
+
 # ---imports---
-import os
 import numpy as np
-import pandas as pd
-from ..lib import utils, cfgparser
+from ..lib import utils, io, mathlib
 # ---Module regime consts and variables---
 print_prefix='model.zoo>>'
 
 # ---Classes and Functions---
 
 # ------------------------PlainHist------------------------
+# plain historical evolution 
+# return matR (nsample,nspan)
+
 def plainhist(oculus):
     utils.write_log(f'{print_prefix}PlainHist Training...')    
     
@@ -23,21 +32,42 @@ def plainhist(oculus):
     utils.write_log(f'{print_prefix}PlainHist Training Done!')    
     return matR
 def plainhist_archive(oculus):
-    archive_dir=oculus.archive_dir
-    np.save(os.path.join(archive_dir,'plainhist.npy'), oculus.model)
-    cfgparser.write_cfg(oculus.cfg, os.path.join(archive_dir,'plainhist.ini'))
-    utils.write_log(f'{print_prefix}PlainHist Archive Done!')
+    io.savmatR(oculus)
 
 def plainhist_predict(oculus):
     utils.write_log(f'{print_prefix}PlainHist Predict...')
-    if not(hasattr(oculus,'model')):
-        archive_dir=oculus.archive_dir
-        oculus.model = np.load(
-            os.path.join(archive_dir,'plainhist.npy'))
+    oculus.model=io.load_model_npy(oculus)
     return oculus.model.mean(axis=0), oculus.model
-
-
 # ------------------------PlainHist------------------------
+
+
+# ------------------------SVPDF------------------------
+# Single Variable PDF
+def svpdf(oculus):
+    utils.write_log(f'{print_prefix}svpdf Training...')    
+    X, Y=oculus.X_train, oculus.Y_train
+    
+    # matR [nsample,0] -- Y, [nsample,1] -- X
+    matR=np.hstack((Y.reshape(-1, 1), X))
+    utils.write_log(f'{print_prefix}svpdf Training Done!') 
+    return matR
+
+def svpdf_archive(oculus):
+    io.savmatR(oculus)
+
+def svpdf_predict(oculus):
+    utils.write_log(f'{print_prefix}svpdf Predict...')
+    oculus.prob_port=float(
+        oculus.cfg['M_svpdf']['prob_portion'])
+    oculus.model = io.load_model_npy(oculus)
+    determ, prob=mathlib.get_closest_samples(
+        oculus.model,oculus.X_pred)
+    return determ, prob   
+# ------------------------SVPDF------------------------
+
+
+# ----------COMMON FUNCTIONS----------
+
 # ---Unit test---
 if __name__ == '__main__':
     pass
