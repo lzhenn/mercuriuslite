@@ -17,6 +17,8 @@ import pkg_resources
 
 from .lib import cfgparser, utils
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 package_name = 'mercuriuslite'
 
@@ -54,6 +56,9 @@ class Mercurius:
         from .model import oculus
         self.predictor=oculus.Oculus(self.cfg)
 
+    def as_evaluator(self, predictor):
+        from .eval import iustitia
+        self.evaluator=iustitia.Iustitia(predictor, self.cfg)
     def _setup_logging(self):
         """
         Configures the logging module using the 

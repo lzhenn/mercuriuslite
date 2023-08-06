@@ -35,7 +35,6 @@ def plainhist_archive(oculus):
     io.savmatR(oculus)
 
 def plainhist_predict(oculus):
-    utils.write_log(f'{print_prefix}PlainHist Predict...')
     oculus.model=io.load_model_npy(oculus)
     return oculus.model.mean(axis=0), oculus.model
 # ------------------------PlainHist------------------------
@@ -56,8 +55,6 @@ def svpdf_archive(oculus):
     io.savmatR(oculus)
 
 def svpdf_predict(oculus):
-    if not(oculus.bayes_flag):
-        utils.write_log(f'{print_prefix}svpdf Predict...')
     oculus.prob_port=float(
         oculus.cfg['M_svpdf']['prob_portion'])
     oculus.model = io.load_model_npy(oculus)

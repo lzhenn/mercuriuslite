@@ -3,9 +3,9 @@
 
 print_prefix='model.oculus>>'
 
-from ..lib import utils, io, painter
+from ..lib import utils, io, painter, mathlib
 from . import zoo
-import numpy as np
+
 class Oculus:
     '''
     oculus caster: core class, model trainer, predictor
@@ -69,34 +69,6 @@ class Oculus:
         '''
         baseline=io.load_model_npy(self, baseline=True)
         self.baseline=baseline[:,self.Ylead]-1
-    def bayes_test(self):
-        '''
-        Use bayes test to determine the confidence level
-        '''
-        utils.write_log(f'{print_prefix}Mercurius.Oculus.bayes_test()...')
-        self.bayes_flag=True
-        test_start_time=utils.parse_intime(
-            self.cfg['PREDICTOR']['test_start_time'])     
-        test_end_time=utils.parse_intime(
-            self.cfg['PREDICTOR']['test_end_time'])
-        X_test, Y_test, whole_span =io.load_xy(
-            self.Xfile, self.Xnames, self.Yfile, self.Ytgt, self.Ylead)
-        idx_start=whole_span.searchsorted(test_start_time)
-        if test_end_time == '0':
-            idx_end=whole_span.shape[0]
-        else:
-            idx_end=whole_span.searchsorted(test_end_time)
-        self._load_baseline()
-        model_predict = getattr(zoo, f'{self.model_name}_predict')
-        
-        test_span=whole_span[idx_start:idx_end]
-        X_test, Y_test=X_test[idx_start:idx_end],Y_test[idx_start:idx_end]
-        
-        for idx, date_tick in enumerate(test_span):
-            self.X_pred=X_test[idx]
-            self.determin, self.prob = model_predict(self)
-            print(self.determin) 
-
 
     def fast_plot(self):
         painter.fast_plot(self)

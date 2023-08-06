@@ -63,7 +63,8 @@ def gen_auto_x(Y, Xnames):
             X[:, i] = mathlib.ma(Y, k) 
         elif name.startswith('dma_'):
             X[:, i] = 1-mathlib.ma(Y, k)/Y
-        
+        elif name.startswith('boll_'): 
+            X[:, i] = mathlib.boll(Y, k)
         else:
             raise ValueError('Invalid feature name: {}'.format(name))
     return X
