@@ -9,7 +9,7 @@ print_prefix='lib.painter>>'
 
 def fast_plot(oculus):
     # Time series
-    ticker=oculus.Yfile.split('/')[-1].split('.')[0]
+    ticker=oculus.ticker
     if oculus.model_name in ['plainhist']:
         nday_series=np.arange(oculus.determin.shape[0])
         plt.plot(
@@ -66,9 +66,9 @@ def fast_plot(oculus):
         ax_histy.hlines(y=0.0, xmin=0, xmax=5, linewidth=1, color='red')
         ax_histy.hlines(y=ybase.mean(), xmin=0, xmax=1, linewidth=2, color='black')       
         
-        plt.show()
-        plt.savefig(os.path.join('./fig/', oculus.model_name+'.png'), 
-            bbox_inches='tight', dpi=const.DPI)
+    plt.show()
+    plt.savefig(os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png'), 
+        bbox_inches='tight', dpi=const.DPI)
 
 def scatter_hist(x, y, ybase, ax, ax_histy):
     # no labels

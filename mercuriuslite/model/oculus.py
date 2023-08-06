@@ -5,9 +5,7 @@ print_prefix='model.oculus>>'
 
 from ..lib import utils, io, painter
 from . import zoo
-import datetime, os
 import numpy as np
-
 class Oculus:
     '''
     oculus caster: core class, model trainer, predictor
@@ -17,8 +15,11 @@ class Oculus:
         self.model_name=cfg['PREDICTOR']['model_name']
         self.Xfile=cfg['PREDICTOR']['Xfile']         
         self.Yfile=cfg['PREDICTOR']['Yfile']
+        self.ticker=self.Yfile.split('/')[-1].split('.')[0]
         self.Ytgt_str=cfg['PREDICTOR']['Ytgt'] 
         self.Ytgt, self.Ylead=utils.parse_lead(cfg['PREDICTOR']['Ytgt'])
+        if self.model_name =='plainhist':
+            self.Ylead=0
         self.Xnames=cfg['PREDICTOR']['autoXnames']
 
         # Train
@@ -31,8 +32,6 @@ class Oculus:
         self.archive_dir=cfg['PREDICTOR']['archive_dir']               
 
         # Predict       
-        self.pred_init_time=datetime.datetime.strptime(
-            cfg['PREDICTOR']['predict_init_time'])
         self.pred_init_time=utils.parse_intime(
                 cfg['PREDICTOR']['predict_init_time'])
 
@@ -40,7 +39,7 @@ class Oculus:
 
     def train(self):
         utils.write_log(f'{print_prefix}Mercurius.Oculus.train()')
-        self.X_train, self.Y_train, self.train_start_time, self.train_end_time =io.load_xy(
+        self.X_train, self.Y_train, self.date_series =io.load_xy(
             self.Xfile, self.Xnames, self.Yfile, self.Ytgt, self.Ylead,
             self.train_start_time, self.train_end_time)
         
@@ -52,9 +51,10 @@ class Oculus:
 
     def predict(self):
         utils.write_log(f'{print_prefix}Mercurius.Oculus.predict()')
-        hist_Y, _, self.pred_init_time =io.load_y(
+        hist_Y, self.date_series =io.load_y(
             self.Yfile, self.Ytgt, 
             end_time=self.pred_init_time, call_from='predict')
+        self.pred_init_time=self.date_series[-1]
         X_pred_series=io.load_x(
             hist_Y, self.Xfile, self.Xnames, 
             end_time=self.pred_init_time, call_from='predict')
@@ -69,29 +69,33 @@ class Oculus:
         '''
         baseline=io.load_model_npy(self, baseline=True)
         self.baseline=baseline[:,self.Ylead]-1
-
     def bayes_test(self):
         '''
         Use bayes test to determine the confidence level
         '''
         utils.write_log(f'{print_prefix}Mercurius.Oculus.bayes_test()...')
+        self.bayes_flag=True
         test_start_time=utils.parse_intime(
             self.cfg['PREDICTOR']['test_start_time'])     
         test_end_time=utils.parse_intime(
             self.cfg['PREDICTOR']['test_end_time'])
-        
+        X_test, Y_test, whole_span =io.load_xy(
+            self.Xfile, self.Xnames, self.Yfile, self.Ytgt, self.Ylead)
+        idx_start=whole_span.searchsorted(test_start_time)
+        if test_end_time == '0':
+            idx_end=whole_span.shape[0]
+        else:
+            idx_end=whole_span.searchsorted(test_end_time)
         self._load_baseline()
-        
-        hist_Y, _, self.pred_init_time =io.load_y(
-            self.Yfile, self.Ytgt, 
-            end_time=test_start_time, call_from='predict')
-        X_pred_series=io.load_x(
-            hist_Y, self.Xfile, self.Xnames, 
-            end_time=test_start_time, call_from='predict')
-        self.X_pred=X_pred_series[-1]
         model_predict = getattr(zoo, f'{self.model_name}_predict')
-        self.determin, self.prob = model_predict(self)
-        exit()
+        
+        test_span=whole_span[idx_start:idx_end]
+        X_test, Y_test=X_test[idx_start:idx_end],Y_test[idx_start:idx_end]
+        
+        for idx, date_tick in enumerate(test_span):
+            self.X_pred=X_test[idx]
+            self.determin, self.prob = model_predict(self)
+            print(self.determin) 
 
 
     def fast_plot(self):

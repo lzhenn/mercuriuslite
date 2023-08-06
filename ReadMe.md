@@ -4,5 +4,9 @@ MercuriusLite is a self-built quantitative investment system focused on asset al
 It provides some objective guidance for Dollar-Cost Averaging (DCA) strategy for your own reference. 
 MercuriusLite is a lightweight version of my previous project [mercurius](https://github.com/lzhenn/mercurius), of which the development was discontinued.
 
+## Class Naming
+* _[Mercuius](https://en.wikipedia.org/wiki/Mercury_(mythology))_: Central controller, name comes from major god in Roman religion and mythology, the god of financial gain.
+* _[Oculus](http://classic.battle.net/diablo2exp/items/normal/usorceress.shtml)_: Prediction model controler, name comes from the unique item specifically for Sorceress in DiabloII.
+* _[Iustitia](https://en.wikipedia.org/wiki/Lady_Justice)_: Model evaluator, name comes from personification of Justice in Ancient Roman art known as Iustitia or Justitia.
 
 **Any question, please contact Zhenning LI (zhenningli91@gmail.com)**

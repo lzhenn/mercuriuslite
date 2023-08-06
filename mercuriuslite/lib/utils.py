@@ -81,8 +81,6 @@ def parse_tswildcard(tgt_time, wildcard):
     return parsed_str
 
 
-
-
 # ---Unit test---
 if __name__ == '__main__':
     pass

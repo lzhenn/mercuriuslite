@@ -23,6 +23,21 @@ def ma(Y, k):
     maY[:k]=Y[:k]
     return maY
 
+def win_prob(Y, r0=0.0):
+    '''
+    return winning probability given no risk r0
+    '''
+    return (Y>r0).sum()/len(Y)
+
+def bayes_update(conf, prob, flag):
+    '''
+    update conf(n) according to flag
+    '''
+    if flag==1:
+        conf=conf*prob/prob.sum()
+    else:
+        conf=conf*(1-prob)/(1-prob).sum()
+    return conf
 # ---Unit test---
 if __name__ == '__main__':
     pass

@@ -16,24 +16,25 @@ date_parser = lambda date: datetime.datetime.strptime(
 # ---Classes and Functions---
        
 def load_xy(
-        Xfile, Xnames, Yfile, Ytgt, Ylead, train_start_time, train_end_time):
+        Xfile, Xnames, Yfile, Ytgt, Ylead, start_time='0', end_time='0'):
     
-    Y, train_start_time, train_end_time =load_y(
-        Yfile, Ytgt, train_start_time, train_end_time)
+    Y, date_series =load_y(Yfile, Ytgt, start_time, end_time)
     
-    X=load_x(
-        Y, Xfile, Xnames, train_start_time, train_end_time)
+    X =load_x(Y, Xfile, Xnames, start_time, end_time)
     
-    X, Y = match_xy(X,Y,Ylead)
+    if Ylead >0: 
+        X, Y, date_series = match_xy(X, Y, Ylead, date_series)
+    
     check_xy(X,Y)
 
-    return X, Y, train_start_time, train_end_time
+    return X, Y, date_series 
     #self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
-def match_xy(X,Y,lead_days):
+def match_xy(X,Y,lead_days, date_series):
     Y=Y[lead_days:]/Y[:-lead_days]-1
     X=X[:-lead_days]
-    return X, Y
+    date_series=date_series[lead_days:]
+    return X, Y, date_series
 def load_y(Yfile, Ytgt, start_time='0', end_time='0', call_from='train'):
     ''' select y according to prescribed method '''
     lb_all=pd.read_csv(Yfile, 
@@ -43,7 +44,8 @@ def load_y(Yfile, Ytgt, start_time='0', end_time='0', call_from='train'):
     if end_time == '0':
         end_time=lb_all.index[-1]
     Y=lb_all[Ytgt][start_time:end_time].values
-    return Y, start_time, end_time
+    date_series=lb_all[start_time:end_time].index
+    return Y, date_series 
 
 def load_x(Y, Xfile, Xnames, start_time='0', end_time='0', call_from='train'):
     ''' load feature lib '''
@@ -65,7 +67,6 @@ def gen_auto_x(Y, Xnames):
         else:
             raise ValueError('Invalid feature name: {}'.format(name))
     return X
-    tickers=self.cfg['SPIDER']['tickers'].split(',')    
 
 def select_x(self, flib, call_from):
     ''' select x according to prescribed method '''
@@ -91,24 +92,26 @@ def check_xy(X,Y):
 def load_model_npy(oculus,baseline=False):
     archive_dir=oculus.archive_dir
     model_name=oculus.cfg['PREDICTOR']['model_name']
+    ticker=oculus.ticker
     if baseline:
         model = np.load(
-            os.path.join(archive_dir,'plainhist.npy'))
+            os.path.join(archive_dir,'plainhist.'+ticker+'.npy'))
     else:
         if not(hasattr(oculus,'model')):
             model = np.load(
-                os.path.join(archive_dir,model_name+'.npy'))
+                os.path.join(archive_dir,model_name+'.'+ticker+'.npy'))
         else:
             model=oculus.model
     return model
 
 def savmatR(oculus):
     model_name=oculus.cfg['PREDICTOR']['model_name']
+    ticker=oculus.ticker
     archive_dir=oculus.archive_dir
-    np.save(os.path.join(archive_dir,model_name+'.npy'), oculus.model)
+    np.save(os.path.join(archive_dir,model_name+'.'+ticker+'.npy'), oculus.model)
     cfgparser.write_cfg(
-        oculus.cfg, os.path.join(archive_dir,model_name+'.ini'))
-    utils.write_log(f'{print_prefix}{model_name} Archive Done!')
+        oculus.cfg, os.path.join(archive_dir,model_name+'.'+ticker+'.ini'))
+    utils.write_log(f'{print_prefix}{model_name} for {ticker} Archive Done!')
 
 
 

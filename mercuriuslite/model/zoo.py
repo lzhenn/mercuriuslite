@@ -56,12 +56,13 @@ def svpdf_archive(oculus):
     io.savmatR(oculus)
 
 def svpdf_predict(oculus):
-    utils.write_log(f'{print_prefix}svpdf Predict...')
+    if not(oculus.bayes_flag):
+        utils.write_log(f'{print_prefix}svpdf Predict...')
     oculus.prob_port=float(
         oculus.cfg['M_svpdf']['prob_portion'])
     oculus.model = io.load_model_npy(oculus)
     determ, prob=mathlib.get_closest_samples(
-        oculus.model,oculus.X_pred)
+        oculus.model,oculus.X_pred,oculus.prob_port)
     return determ, prob   
 # ------------------------SVPDF------------------------
 
