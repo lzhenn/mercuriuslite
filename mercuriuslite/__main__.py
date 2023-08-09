@@ -62,7 +62,7 @@ class Mercurius:
 
     def as_trader(self):
         from .strategy import minerva
-        self.trader=minerva.Minerva(predictor, self.cfg)
+        self.trader=minerva.Minerva(self.cfg)
     
     def _setup_logging(self):
         """

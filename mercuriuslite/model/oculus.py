@@ -67,7 +67,8 @@ class Oculus:
         '''
         Load baseline (histplain) model for comparison
         '''
-        baseline=io.load_model_npy(self, baseline=True)
+        baseline, _=io.load_model_npy(
+            self.archive_dir, self.model_name, self.ticker, baseline=True)
         self.baseline=baseline[:,self.Ylead]-1
 
     def fast_plot(self):

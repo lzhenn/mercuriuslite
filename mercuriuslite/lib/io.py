@@ -30,6 +30,13 @@ def load_xy(
     return X, Y, date_series 
     #self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
+def load_hist(dbpath, tgt):
+    ''' load historical data accroding to dbpath and tgt '''
+    fn_path=os.path.join(dbpath, tgt+'.csv')
+    tgt_hist=pd.read_csv(fn_path, parse_dates=True, 
+        date_parser=date_parser, index_col='Date')
+    return tgt_hist
+
 def match_xy(X,Y,lead_days, date_series):
     Y=Y[lead_days:]/Y[:-lead_days]-1
     X=X[:-lead_days]
@@ -90,20 +97,18 @@ def check_xy(X,Y):
             f'{print_prefix}Y Size:{Y.shape},first five:{Y[:5]}, and last five:{Y[-5:]}')
         utils.write_log(
             f'{print_prefix}X Size:{X.shape},first five:{X[:5].T}, and last five:{X[-5:].T}')
-def load_model_npy(oculus,baseline=False):
-    archive_dir=oculus.archive_dir
-    model_name=oculus.cfg['PREDICTOR']['model_name']
-    ticker=oculus.ticker
+
+def load_model(model_dir, model_name, ticker, baseline=False):
+    if model_name in ['plainhist', 'svpdf']:
+        return load_model_npy(model_dir, model_name, ticker, baseline)
+    
+def load_model_npy(model_dir, model_name, ticker, baseline=False):
     if baseline:
-        model = np.load(
-            os.path.join(archive_dir,'plainhist.'+ticker+'.npy'))
-    else:
-        if not(hasattr(oculus,'model')):
-            model = np.load(
-                os.path.join(archive_dir,model_name+'.'+ticker+'.npy'))
-        else:
-            model=oculus.model
-    return model
+        model_name='plainhist'
+    model = np.load(
+        os.path.join(model_dir, model_name+'.'+ticker+'.npy'))
+    model_meta=cfgparser.read_cfg(os.path.join(model_dir, model_name+'.'+ticker+'.ini'))
+    return model, model_meta
 
 def savmatR(oculus):
     model_name=oculus.cfg['PREDICTOR']['model_name']

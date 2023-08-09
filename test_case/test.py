@@ -9,3 +9,6 @@ agent=mercuriuslite.Mercurius()
 #agent.as_evaluator(agent.predictor)
 #agent.evaluator.bayes_test()
 #agent.predictor.fast_plot()
+
+agent.as_trader()
+agent.trader.backtest()

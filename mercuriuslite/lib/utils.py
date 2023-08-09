@@ -17,6 +17,7 @@
 """
 # ---imports---
 import logging, datetime
+import pandas as pd
 from . import const
 
 # ---Module regime consts and variables---
@@ -63,9 +64,17 @@ def cal_trade_day(lead_str):
     for key_wd in ['day','week','mon','qtr','yr']:
         if key_wd in lead_str:
             return int(lead_str.replace(key_wd,''))*const.TRAD_DAYS[key_wd]
-    
+    if lead_str == 'none':
+        return -1
     throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
 
+def gen_date_intervals(dateseries, interval):
+    for key_wd in ['W','M','Q','Y']:
+        if key_wd in interval:
+            dates=pd.date_range(start=dateseries[1], end=dateseries[-1], freq=key_wd)
+            return dates.to_list()
+    if interval == 'none':
+        return []
    
 def parse_intime(dt_str):
     if not(dt_str=='0'):

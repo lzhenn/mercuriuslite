@@ -35,7 +35,8 @@ def plainhist_archive(oculus):
     io.savmatR(oculus)
 
 def plainhist_predict(oculus):
-    oculus.model=io.load_model_npy(oculus)
+    oculus.model, oculus.model_meta=io.load_model_npy(
+        oculus.archive_dir, oculus.model_name, oculus.ticker)
     return oculus.model.mean(axis=0), oculus.model
 # ------------------------PlainHist------------------------
 
@@ -57,7 +58,7 @@ def svpdf_archive(oculus):
 def svpdf_predict(oculus):
     oculus.prob_port=float(
         oculus.cfg['M_svpdf']['prob_portion'])
-    oculus.model = io.load_model_npy(oculus)
+    oculus.model, oculus.model_meta = io.load_model_npy(oculus)
     determ, prob=mathlib.get_closest_samples(
         oculus.model,oculus.X_pred,oculus.prob_port)
     return determ, prob   
