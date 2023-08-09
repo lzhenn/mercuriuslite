@@ -20,16 +20,20 @@ def ma(Y, k):
     maY=np.zeros(len(Y))
     for j in range(len(Y)-k+1):
         maY[j+k-1]=Y[j:j+k].sum()/k
-    maY[:k]=Y[:k]
+    for j in range(0,k):
+        maY[j]=Y[:j+1].sum()/(j+1)
     return maY
 def stdma(Y, maY, k):
     stdY=np.zeros(len(Y))
     for j in range(len(Y)-k+1):
-        stdY[j+k-1]=np.sqrt((Y[j:j+k]-maY[j+k-1])**2).sum()/k
-    stdY[:k]=np.sqrt((Y[:k]-maY[:k])**2).sum()/k
+        series=Y[j:j+k]-maY[j+k-1]
+        stdY[j+k-1]=np.std(series)
+    for j in range(0,k):
+        series=Y[:j+1]-maY[j]
+        stdY[j]=np.std(series)
     return stdY+1e-10
 
-def boll(Y, k):
+def bollpct(Y, k):
     '''
     return relative position of bollinger band
     -1: bottom of band, 1: top of band
@@ -37,12 +41,30 @@ def boll(Y, k):
     boll=np.zeros(len(Y))
     maY=ma(Y, k)
     stdY=stdma(Y,maY,k)
-    boll=(Y-maY)/(2.0*stdY)
+    boll=(Y-(maY-2.0*stdY))/(4.0*stdY)
     return boll
 
 def init_belief(n):
     belief=np.ones(n)/n
     return belief
+
+def kelly(p, wf, lf):
+    '''
+    return kelly factor
+    p:  prob of winning
+    wf: winning gain fraction, lf: losing fraction
+    '''
+    return p/lf - (1-p)/wf
+
+def odds(Y, r0=0.0):
+    '''
+    return odds given no risk r0
+
+    '''
+    wf = (Y[Y>r0]).mean()
+    lf = (Y[Y<=r0]).mean()
+    return wf, lf 
+
 def win_prob(Y, r0=0.0):
     '''
     return winning probability given no risk r0

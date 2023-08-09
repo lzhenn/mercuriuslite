@@ -59,6 +59,11 @@ class Mercurius:
     def as_evaluator(self, predictor):
         from .eval import iustitia
         self.evaluator=iustitia.Iustitia(predictor, self.cfg)
+
+    def as_trader(self):
+        from .strategy import minerva
+        self.trader=minerva.Minerva(predictor, self.cfg)
+    
     def _setup_logging(self):
         """
         Configures the logging module using the 

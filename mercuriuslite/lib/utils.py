@@ -56,12 +56,17 @@ def parse_lead(ytgt):
         lead_str=ytgt.split('_')[-1]
     
     ytgt=ytgt.split('_')[0]
-    
-    for key_wd in ['day','week','mon','yr']:
+    trad_day=cal_trade_day(lead_str) 
+    return ytgt, trad_day
+
+def cal_trade_day(lead_str):
+    for key_wd in ['day','week','mon','qtr','yr']:
         if key_wd in lead_str:
-            return ytgt, int(lead_str.replace(key_wd,''))*const.TRAD_DAYS[key_wd]
+            return int(lead_str.replace(key_wd,''))*const.TRAD_DAYS[key_wd]
+    
     throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
 
+   
 def parse_intime(dt_str):
     if not(dt_str=='0'):
         return datetime.datetime.strptime(dt_str, '%Y%m%d')

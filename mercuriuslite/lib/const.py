@@ -1,10 +1,7 @@
 # Trading
 TRAD_DAYS={
-    'day':1, 'week':5, 'mon':21, 'yr':252
+    'day':1, 'week':5, 'mon':21, 'qtr':63, 'yr':252
 }
-TRAD_DAYS_PER_YEAR=252
-TRAD_DAYS_PER_MONTH=21
-TRAD_DAYS_PER_WEEK=5
 NO_RISK_RETURN=0.03 # default
 
 # Figures
