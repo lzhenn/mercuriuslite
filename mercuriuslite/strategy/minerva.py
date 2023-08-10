@@ -4,8 +4,8 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io
-from . import zoo
+from ..lib import utils, io, const
+from . import scheme_zoo
 import datetime
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ class Minerva:
     def __init__(self, cfg):
         self.cfg=cfg
         self.scheme_name=cfg['SCHEMER']['scheme_name']
-        self.strategy = getattr(zoo, self.scheme_name)
+        self.strategy = getattr(scheme_zoo, self.scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
         self.ref_span=utils.cal_trade_day(cfg['SCHEMER']['ref_span'])
         self.rebalance_frq=utils.cal_trade_day(cfg['SCHEMER']['rebalance_frq'])
@@ -26,7 +26,7 @@ class Minerva:
         
         self.action_dict={}
         for tgt in self.port_tgts:
-            self.action_dict[tgt]=0.0
+            self.action_dict[tgt]={'share':0.0, 'value':0.0}
 
         self.model_names=cfg['SCHEMER']['port_models'].replace(' ','').split(',')
         self._load_portfolio()
@@ -34,9 +34,9 @@ class Minerva:
         if cfg['SCHEMER'].getboolean('backtest_flag'):
             self.backtest_start_time=utils.parse_intime(
                 self.cfg['SCHEMER']['backtest_start_time'])     
-            backtest_end_time=utils.parse_intime(
+            self.backtest_end_time=utils.parse_intime(
                 self.cfg['SCHEMER']['backtest_end_time'])
-            if backtest_end_time =='0':
+            if self.backtest_end_time =='0':
                 self.backtest_end_time=datetime.datetime.now()
             self.dateseries=pd.date_range(
                 start=self.backtest_start_time,
@@ -70,8 +70,8 @@ class Minerva:
             np.zeros(len(date_series)), index=date_series, columns=['accu_fund'])
         
         self.track['cash']=0.0
-        self.track['port_value']=0
-        
+        self.track['port_value']=0.0
+        self.track['total_value']=0.0
         for ticker in self.port_tgts:
             self.track[f'{ticker}_value']=0.0
             self.track[f'{ticker}_share']=0
@@ -85,21 +85,25 @@ class Minerva:
         2. trade signal
         3. rebalance signal
         '''
+        #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
         self._on_funding(date)
         self._on_trade(date)
         self._on_rebalance(date)
         self._on_rolling(date)
-    
     def _on_funding(self, date):    
         if date==self.dateseries[0]:
             utils.write_log(
                 f'{print_prefix}Initial funding signal captured:{self.init_fund}USD'+\
                 f' on {date.strftime("%Y-%m-%d")}')
             self.track.loc[date, 'cash']=self.init_fund
+            self.track.loc[date, 'total_value']=self.init_fund
             self.track.loc[date, 'accu_fund']=self.init_fund
-        if date in self.cash_dates:
+            self.new_fund=True
+        elif date in self.cash_dates:
             self.track.loc[date,'cash']+=self.cash_flow
+            self.track.loc[date,'total_value']+=self.cash_flow
             self.track.loc[date,'accu_fund']+=self.cash_flow
+            self.new_fund=True
             utils.write_log(
                 f'{print_prefix}Funding signal captured:'+\
                 f'{self.track.loc[date,"accu_fund"]}USD (+{self.cash_flow}USD)'+\
@@ -107,42 +111,82 @@ class Minerva:
     def _on_trade(self, date):
         '''
         '''
+        self.trade_flag=True
         if date in self.trading_dates:
             self.strategy(self, date)
+            self._adjust_value('Open', date)
         else:
-            utils.write_log(
-                f'{print_prefix}Market closed on {date.strftime("%Y-%m-%d")}')
-        
+            #utils.write_log(
+            #    f'{print_prefix}Market closed on {date.strftime("%Y-%m-%d")}')
+            self.trade_flag=False
     def _on_rebalance(self, date):
         pass           
 
     def _on_rolling(self, date): 
         '''
-        rolling the whole pipeline change to next day initial state 
+        rolling the whole pipeline 
+        wrap the day close and roll to the next day open
         '''
+        if self.trade_flag:
+            self._adjust_value('Close', date)
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             self.track.loc[tmr]=self.track.loc[date]
 
+    def _adjust_value(self, price_type, date):
+        track=self.track
+        track.loc[date,'port_value']=0.0
+        for tgt in self.port_tgts:
+            price_rec=self.port_hist[tgt].loc[date]
+            price=price_rec[price_type]
+            share=track.loc[date,f'{tgt}_share']
+            track.loc[date,f'{tgt}_value']=share*price
+            track.loc[date,'port_value']+=share*price
+        track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
 
     def pos_manage(self,date):
         '''
-        {'SPY':5000, 'QQQ':-1000}
+        determine exact position change 
+        {'SPY':{'share':0.0,'value':5000}}
+        
         positive for buy, negative for sell 
         '''
-        port_rec=self.track.loc[date]
-        cash = port_rec['cash']
+        #self.risk_manage(date)
 
- 
+        track=self.track
+        for tgt in self.port_tgts:
+            price_rec=self.port_hist[tgt].loc[date]
+            buy_price=(price_rec['High']+price_rec['Low'])/2
+            cash_portion=self.action_dict[tgt]['value']
+            share, cash_fra=utils.cal_buy(buy_price, cash_portion)
+            if share>0:
+                utils.write_log(
+                    f'{print_prefix}Buy signal captured:{share:.0f} shares'+\
+                    f' of {tgt}@{buy_price:.2f}({share*buy_price:.2f}USD)'+\
+                    f' on {date.strftime("%Y-%m-%d")}'
+                )
+                track.loc[date,f'{tgt}_share']+=share
+                track.loc[date,f'{tgt}_value']+=share*buy_price
+                track.loc[date,'port_value']+=share*buy_price
+                track.loc[date,'cash']-=share*buy_price
+        track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+   
     def risk_manage(self,date):
-        '''
-        '''
-        pass
-
+        
+        # 10% of cash left
+        port_rec=self.track.loc[date]
+        cash_to_buy=0
+        for tgt in self.port_tgts:
+            cash_to_buy+=self.action_dict[tgt]['value']
+        if cash_to_buy+port_rec['port_value']>0.9*port_rec['total_value']:
+            adj_ratio=0.9*(port_rec['total_value']-port_rec['port_value'])/cash_to_buy
+            for tgt in self.port_tgts:
+                self.action_dict[tgt]['value']=self.action_dict[tgt]['value']*adj_ratio
     def realtime():
         pass
 
 
+ 
 
 # ---Module regime consts and variables---
 

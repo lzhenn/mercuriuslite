@@ -18,6 +18,7 @@
 # ---imports---
 import logging, datetime
 import pandas as pd
+import numpy as np
 from . import const
 
 # ---Module regime consts and variables---
@@ -94,7 +95,10 @@ def parse_tswildcard(tgt_time, wildcard):
             parsed_str+=seg
     return parsed_str
 
-
+def cal_buy(price, cash_in):
+    share=np.floor(cash_in/price)
+    cash_left=cash_in-share*price
+    return share, cash_left
 # ---Unit test---
 if __name__ == '__main__':
     pass
