@@ -2,12 +2,17 @@
 """specific module for IO"""
 # ---imports---
 import os
+from . import const
 import numpy as np
 # ---Module regime consts and variables---
 print_prefix='lib.math>>'
 
 
 # ---Classes and Functions---
+
+def ar2dr(x):
+    x=x+1
+    return x**(1.0/const.DAYS_PER_YEAR)
 def get_closest_samples(matR, x, nsub=0.05):
     n_samples = matR.shape[0]
     n_subsamples = int(nsub * n_samples)

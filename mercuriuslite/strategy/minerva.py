@@ -4,11 +4,18 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const, painter
+from ..lib import utils, io, const, painter, mathlib
 from . import scheme_zoo
 import datetime
 import numpy as np
 import pandas as pd
+
+# ---Module regime consts and variables---
+# no risk daily return
+NRDR=mathlib.ar2dr(const.NO_RISK_RETURN)
+
+# ---Classes and Functions---
+
 class Minerva:
     '''
     minerva engine: strategy implementation engine
@@ -17,15 +24,14 @@ class Minerva:
         self.cfg=cfg
         self.scheme_name=cfg['SCHEMER']['scheme_name']
         self.strategy = getattr(scheme_zoo, self.scheme_name)
+        self.pos_scheme_name=cfg['SCHEMER']['pos_scheme_name']
+        self.pos_scheme= getattr(scheme_zoo, 'pos_'+self.pos_scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
-        self.ref_span=utils.cal_trade_day(cfg['SCHEMER']['ref_span'])
-        self.rebalance_frq=utils.cal_trade_day(cfg['SCHEMER']['rebalance_frq'])
         self.db_path=cfg['SCHEMER']['db_path']
+        self.baseticker=cfg['SCHEMER']['baseticker']
         self.model_path=cfg['SCHEMER']['model_path']
         self.port_tgts=cfg['SCHEMER']['port_tgts'].replace(' ','').split(',')
-        self.port_dic=utils.cal_exposure_assign(
-            self.port_tgts, cfg['SCHEMER']['port_position'].replace(' ','').split(','))
-        
+       
         self.action_dict={}
         for tgt in self.port_tgts:
             self.action_dict[tgt]={'share':0.0, 'value':0.0}
@@ -47,6 +53,8 @@ class Minerva:
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
         self.cash_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['cash_frq'])
+        self.balance_dates=utils.gen_date_intervals(
+            self.dateseries, cfg['SCHEMER']['rebalance_frq'])
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
@@ -55,7 +63,7 @@ class Minerva:
             self.port_model[tgt], self.port_meta[tgt]=io.load_model(
                 self.model_path, model_name, tgt, baseline=False)
         self.trading_dates=self.port_hist[self.port_tgts[0]].index
-
+        self.basehist=io.load_hist(self.db_path, self.baseticker)
     def backtest(self):
         '''
         '''
@@ -84,8 +92,20 @@ class Minerva:
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
             inplace=True)
+        
         track['daily_return']=np.log(track['daily_return'])
         track['accum_return']=np.exp(track['daily_return'].cumsum())
+        
+        # baseline return
+        track['baseline_return']=track['accum_return']
+        idx_start=self.basehist.index.searchsorted(self.backtest_start_time)
+        idx_end=self.basehist.index.searchsorted(self.backtest_end_time)
+        base_value=self.basehist.iloc[idx_start]['Close']
+        mkt_value=base_value       
+        for date in self.dateseries:
+            if date in self.trading_dates:
+                mkt_value=self.basehist.loc[date]['Close']
+            track.loc[date, 'baseline_return']=mkt_value/base_value
         painter.draw_perform_fig(track, self.scheme_name)
     def _init_portfolio(self):
         # build portfolio track
@@ -96,6 +116,7 @@ class Minerva:
         self.track['cash']=0.0
         self.track['port_value']=0.0
         self.track['total_value']=0.0
+        self.track['norisk_total_value']=0.0
         self.track['daily_return']=1.0
         for ticker in self.port_tgts:
             self.track[f'{ticker}_value']=0.0
@@ -116,6 +137,11 @@ class Minerva:
         self._on_trade(date)
         self._on_rebalance(date)
         self._on_rolling(date)
+    
+    def _on_rebalance(self, date):
+        pass
+        #if self.trade_flag:
+
     def _on_funding(self, date):    
         if date==self.dateseries[0]:
             utils.write_log(
@@ -139,40 +165,43 @@ class Minerva:
         '''
         self.trade_flag=True
         if date in self.trading_dates:
+            #self._adjust_value('Open', date)
             self.strategy(self, date)
-            self._adjust_value('Open', date)
         else:
             #utils.write_log(
             #    f'{print_prefix}Market closed on {date.strftime("%Y-%m-%d")}')
             self.trade_flag=False
-    def _on_rebalance(self, date):
-        pass           
 
     def _on_rolling(self, date): 
         '''
         rolling the whole pipeline 
         wrap the day close and roll to the next day open
         '''
+        if self.trade_flag:
+            self._adjust_value('Close', date)
+        
         track=self.track
         in_fund=self.cash_flow
         day_total=track.loc[date,'total_value']
-        if self.trade_flag:
-            self._adjust_value('Close', date)
         if not(date==self.dateseries[0]):
             yesterday=date+datetime.timedelta(days=-1)
             if date in self.cash_dates:
                 track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
+                track.loc[date, 'norisk_total_value']=(
+                    track.loc[yesterday, 'norisk_total_value']+in_fund)*NRDR
             else:
                 track.loc[date, 'daily_return']=day_total/track.loc[yesterday,'total_value']
+                track.loc[date, 'norisk_total_value']=track.loc[yesterday, 'norisk_total_value']*NRDR
         else:
             track.loc[date, 'daily_return']=track.loc[date,'total_value']/self.init_fund
+            track.loc[date, 'norisk_total_value']=self.init_fund*NRDR
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             track.loc[tmr]=track.loc[date]
 
     def _adjust_value(self, price_type, date):
         '''
-        adjust value based on open/close price
+        adjust value based on open/low/high/close price
         '''
         track=self.track
         track.loc[date,'port_value']=0.0
@@ -214,26 +243,12 @@ class Minerva:
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
    
     def risk_manage(self,date):
-        
-        # 10% of cash left
-        port_rec=self.track.loc[date]
-        cash_to_buy=0
-        for tgt in self.port_tgts:
-            cash_to_buy+=self.action_dict[tgt]['value']
-        if cash_to_buy+port_rec['port_value']>0.9*port_rec['total_value']:
-            adj_ratio=0.9*(port_rec['total_value']-port_rec['port_value'])/cash_to_buy
-            for tgt in self.port_tgts:
-                self.action_dict[tgt]['value']=self.action_dict[tgt]['value']*adj_ratio
+        pass     
     def realtime():
         pass
 
 
  
-
-# ---Module regime consts and variables---
-
-
-# ---Classes and Functions---
 
 
 # ---Unit test---

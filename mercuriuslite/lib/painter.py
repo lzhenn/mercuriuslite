@@ -16,15 +16,23 @@ def draw_perform_fig(df, scheme_name):
     fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
 
     # Upper plot: NAV timeseries
-    ax[0].plot(df.index, df['total_value'])
+    ax[0].plot(df.index, df['total_value'], label='NAV', color='blue')
+    ax[0].plot(df.index, df['accu_fund'], label='AccuFund', color='red')
+    ax[0].plot(df.index, df['norisk_total_value'], label='NoRiskV', color='green')
     ax[0].set_ylabel('NAV')
+    ax[0].legend()
 
     # Middle plot: return rate
-    ax[1].plot(df.index, df['accum_return'])
+    ax[1].plot(df.index, df['accum_return'], label='RTW', color='blue')
+    ax[1].plot(df.index, df['fund_change']+1, label='ARR', color='red')
+    ax[1].plot(df.index, df['baseline_return'], label='Baseline', color='green')
     ax[1].set_ylabel('Return Rate')
+    ax[1].legend()
 
     # Lower plot: maximum drawdown
-    ax[2].plot(df.index, -df['drawdown'])
+    ax[2].plot(df.index, -df['drawdown'], color='blue')
+    ax[2].fill_between(
+        df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
     ax[2].set_ylabel('Drawdown')
 
     # Set the x-axis label and title
