@@ -7,7 +7,7 @@
 #   gridding 
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
-from ..lib import const
+from ..lib import const, utils
 
 # ------------------------Buy and Hold------------------------
 
@@ -19,6 +19,6 @@ def buy_and_hold(minerva, date):
     if (cash>const.CASH_IN_HAND*port_rec['total_value']) and minerva.new_fund:
         cash_to_use=cash-const.CASH_IN_HAND*port_rec['total_value']
         for tgt in minerva.port_tgts:
-            minerva.action_dict[tgt]['value']=cash_to_use*1.0/ntgt
+            minerva.action_dict[tgt]['value']=cash_to_use*minerva.pos_dic[tgt]
         minerva.new_fund=False
         minerva.pos_manage(date)

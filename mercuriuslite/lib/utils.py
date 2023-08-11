@@ -99,6 +99,16 @@ def cal_buy(price, cash_in):
     share=np.floor(cash_in/price)
     cash_left=cash_in-share*price
     return share, cash_left
+
+def cal_exposure_assign(tgts, portions):
+    pos_dic={}
+    portions=[float(port) for port in portions]
+    portions=np.asarray(portions)
+    portions=portions/portions.sum()
+    for tgt,portion in zip(tgts,portions):
+        pos_dic[tgt]=portion
+    return pos_dic
+
 # ---Unit test---
 if __name__ == '__main__':
     pass

@@ -5,6 +5,9 @@ TRAD_DAYS={
 CASH_IN_HAND=0.1
 NO_RISK_RETURN=0.03 # default
 
+# log
+HLINE='------------------'
+
 # Figures
 SM_SIZE = 8
 MID_SIZE = 12

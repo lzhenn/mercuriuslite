@@ -4,7 +4,7 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const
+from ..lib import utils, io, const, painter
 from . import scheme_zoo
 import datetime
 import numpy as np
@@ -23,6 +23,8 @@ class Minerva:
         self.db_path=cfg['SCHEMER']['db_path']
         self.model_path=cfg['SCHEMER']['model_path']
         self.port_tgts=cfg['SCHEMER']['port_tgts'].replace(' ','').split(',')
+        self.port_dic=utils.cal_exposure_assign(
+            self.port_tgts, cfg['SCHEMER']['port_position'].replace(' ','').split(','))
         
         self.action_dict={}
         for tgt in self.port_tgts:
@@ -57,12 +59,34 @@ class Minerva:
     def backtest(self):
         '''
         '''
+        start_day=self.backtest_start_time
+        end_day=self.backtest_end_time
+        utils.write_log(
+            f'{print_prefix}{const.HLINE}BACKTESTING: {start_day.strftime("%Y-%m-%d")} START{const.HLINE}')
         self._init_portfolio()
         # backtrace
         for date in self.dateseries:
             self._event_process(date)
-
+        utils.write_log(
+            f'{print_prefix}{const.HLINE}BACKTESTING: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
+        self.inspect()
         print(self.track)
+
+    def inspect(self):
+        '''
+        inspect portfolio
+        '''
+        utils.write_log(f'{print_prefix}inspect portfolio...')
+        track=self.track
+        track['drawdown'] = (
+            track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
+        track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']
+        track['drawdown'].where(
+            track['drawdown']>-track['fund_change'], other=-track['fund_change'],
+            inplace=True)
+        track['daily_return']=np.log(track['daily_return'])
+        track['accum_return']=np.exp(track['daily_return'].cumsum())
+        painter.draw_perform_fig(track, self.scheme_name)
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
@@ -72,9 +96,11 @@ class Minerva:
         self.track['cash']=0.0
         self.track['port_value']=0.0
         self.track['total_value']=0.0
+        self.track['daily_return']=1.0
         for ticker in self.port_tgts:
             self.track[f'{ticker}_value']=0.0
             self.track[f'{ticker}_share']=0
+
 
     def _feedinfo(self, date):
         self.message={'date':date}
@@ -127,13 +153,27 @@ class Minerva:
         rolling the whole pipeline 
         wrap the day close and roll to the next day open
         '''
+        track=self.track
+        in_fund=self.cash_flow
+        day_total=track.loc[date,'total_value']
         if self.trade_flag:
             self._adjust_value('Close', date)
+        if not(date==self.dateseries[0]):
+            yesterday=date+datetime.timedelta(days=-1)
+            if date in self.cash_dates:
+                track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
+            else:
+                track.loc[date, 'daily_return']=day_total/track.loc[yesterday,'total_value']
+        else:
+            track.loc[date, 'daily_return']=track.loc[date,'total_value']/self.init_fund
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
-            self.track.loc[tmr]=self.track.loc[date]
+            track.loc[tmr]=track.loc[date]
 
     def _adjust_value(self, price_type, date):
+        '''
+        adjust value based on open/close price
+        '''
         track=self.track
         track.loc[date,'port_value']=0.0
         for tgt in self.port_tgts:
@@ -142,7 +182,9 @@ class Minerva:
             share=track.loc[date,f'{tgt}_share']
             track.loc[date,f'{tgt}_value']=share*price
             track.loc[date,'port_value']+=share*price
-        track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+        
+        nav=track.loc[date,'port_value']+track.loc[date,'cash']
+        track.loc[date,'total_value']=nav
 
     def pos_manage(self,date):
         '''

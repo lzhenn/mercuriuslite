@@ -7,6 +7,34 @@ import matplotlib.ticker as mtick
 print_prefix='lib.painter>>'
 
 
+def draw_perform_fig(df, scheme_name):
+    # Calculate the daily return rate
+
+    # Calculate the maximum drawdown
+
+    # Plot the three figures
+    fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
+
+    # Upper plot: NAV timeseries
+    ax[0].plot(df.index, df['total_value'])
+    ax[0].set_ylabel('NAV')
+
+    # Middle plot: return rate
+    ax[1].plot(df.index, df['accum_return'])
+    ax[1].set_ylabel('Return Rate')
+
+    # Lower plot: maximum drawdown
+    ax[2].plot(df.index, -df['drawdown'])
+    ax[2].set_ylabel('Drawdown')
+
+    # Set the x-axis label and title
+    plt.xlabel('Date')
+    plt.suptitle('Portfolio Performance')
+
+    # Show the plot
+    plt.show()
+    plt.savefig(os.path.join('./fig/', scheme_name+'.png'), 
+        bbox_inches='tight', dpi=const.DPI)
 def fast_plot(oculus):
     # Time series
     ticker=oculus.ticker
