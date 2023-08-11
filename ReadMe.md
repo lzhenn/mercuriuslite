@@ -1,3 +1,5 @@
+<img align="right" src="https://raw.githubusercontent.com/lzhenn/mercuriuslite/master/mercuriuslite.png" alt="TesseLune Logo" width="200">
+
 # MercuriusLite: A Lightweight Quantitative Investment System
 
 MercuriusLite is a self-built quantitative investment system focused on asset allocation of macro asset classes in personal investment portfolio. 
