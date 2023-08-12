@@ -95,7 +95,7 @@ def parse_tswildcard(tgt_time, wildcard):
             parsed_str+=seg
     return parsed_str
 
-def cal_buy(price, cash_in):
+def cal_trade(price, cash_in):
     share=np.floor(cash_in/price)
     cash_left=cash_in-share*price
     return share, cash_left
@@ -106,3 +106,14 @@ def cal_exposure_assign(tgts, portions):
 if __name__ == '__main__':
     pass
 
+def fmt_value(val, vtype='usd', dec=2):
+    # vtype='usd','pct'
+    
+    if vtype=='usd':
+        fmt_val=f'${val:.2f}'
+    if vtype=='pct':
+        if val>=0:
+            fmt_val=f'+{val:.2%}'
+        else:
+            fmt_val=f'{val:.2%}'
+    return fmt_val 

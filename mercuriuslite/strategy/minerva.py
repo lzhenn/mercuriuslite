@@ -5,6 +5,7 @@ print_prefix='strategy.minerva>>'
 
 # ---imports---
 from ..lib import utils, io, const, painter, mathlib
+from ..eval import iustitia
 from . import scheme_zoo
 import datetime
 import numpy as np
@@ -34,7 +35,7 @@ class Minerva:
        
         self.action_dict={}
         for tgt in self.port_tgts:
-            self.action_dict[tgt]={'share':0.0, 'value':0.0}
+            self.action_dict[tgt]=0.0
 
         self.model_names=cfg['SCHEMER']['port_models'].replace(' ','').split(',')
         self._load_portfolio()
@@ -49,12 +50,17 @@ class Minerva:
             self.dateseries=pd.date_range(
                 start=self.backtest_start_time,
                 end=self.backtest_end_time)
+        
         # cash flow        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
         self.cash_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['cash_frq'])
+        
+        # rebalance
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
+        self.defer_balance=False
+    
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
@@ -78,7 +84,6 @@ class Minerva:
         utils.write_log(
             f'{print_prefix}{const.HLINE}BACKTESTING: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
         self.inspect()
-        print(self.track)
 
     def inspect(self):
         '''
@@ -95,7 +100,7 @@ class Minerva:
         
         track['daily_return']=np.log(track['daily_return'])
         track['accum_return']=np.exp(track['daily_return'].cumsum())
-        
+
         # baseline return
         track['baseline_return']=track['accum_return']
         idx_start=self.basehist.index.searchsorted(self.backtest_start_time)
@@ -108,6 +113,9 @@ class Minerva:
             track.loc[date, 'baseline_return']=mkt_value/base_value
         track['baseline_drawdown'] = (
             track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
+        
+        eval_table=iustitia.strategy_eval(track)
+        painter.table_print(eval_table) 
         painter.draw_perform_fig(track, self.scheme_name)
     def _init_portfolio(self):
         # build portfolio track
@@ -141,9 +149,19 @@ class Minerva:
         self._on_rolling(date)
     
     def _on_rebalance(self, date):
-        pass
-        #if self.trade_flag:
-
+        if (date in self.balance_dates) or (self.defer_balance):
+            if self.trade_flag:
+                port_dic=self.pos_scheme(self, date)
+                track_rec=self.track.loc[date]
+                port_value=track_rec['port_value']
+                for tgt in self.port_tgts:
+                    value=track_rec[f'{tgt}_value']
+                    self.action_dict[tgt]=port_value*port_dic[tgt]-value
+                utils.write_log(f'{print_prefix}Rebalance signal captured.')
+                self.trade(date)
+                self.defer_balance=False
+            else:
+                self.defer_balance=True 
     def _on_funding(self, date):    
         if date==self.dateseries[0]:
             utils.write_log(
@@ -217,31 +235,34 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def pos_manage(self,date):
+    def trade(self,date):
         '''
-        determine exact position change 
-        {'SPY':{'share':0.0,'value':5000}}
+        determine exact position change, for input
+        action_dict= 
+        {'SPY':5000,'SPXL':-1000}
         
         positive for buy, negative for sell 
         '''
         #self.risk_manage(date)
 
         track=self.track
-        for tgt in self.port_tgts:
+        #[('SPXL', -Val), ('SPY', Val)]
+        act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
+        for act_tgt in act_tgt_lst:
+            tgt,val=act_tgt[0],act_tgt[1]
             price_rec=self.port_hist[tgt].loc[date]
-            buy_price=(price_rec['High']+price_rec['Low'])/2
-            cash_portion=self.action_dict[tgt]['value']
-            share, cash_fra=utils.cal_buy(buy_price, cash_portion)
-            if share>0:
+            trade_price=(price_rec['High']+price_rec['Low'])/2
+            share, cash_fra=utils.cal_trade(trade_price, val)
+            if not(share==0):
                 utils.write_log(
-                    f'{print_prefix}Buy signal captured:{share:.0f} shares'+\
-                    f' of {tgt}@{buy_price:.2f}({share*buy_price:.2f}USD)'+\
+                    f'{print_prefix}Trade signal captured:{share:.0f} shares'+\
+                    f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
                     f' on {date.strftime("%Y-%m-%d")}'
                 )
                 track.loc[date,f'{tgt}_share']+=share
-                track.loc[date,f'{tgt}_value']+=share*buy_price
-                track.loc[date,'port_value']+=share*buy_price
-                track.loc[date,'cash']-=share*buy_price
+                track.loc[date,f'{tgt}_value']+=share*trade_price
+                track.loc[date,'port_value']+=share*trade_price
+                track.loc[date,'cash']-=share*trade_price
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
    
     def risk_manage(self,date):

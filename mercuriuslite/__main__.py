@@ -15,7 +15,7 @@ import logging, logging.config
 import shutil
 import pkg_resources
 
-from .lib import cfgparser, utils
+from .lib import cfgparser, utils, const
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -42,6 +42,7 @@ class Mercurius:
         
         self.cfg=cfgparser.read_cfg(os.path.join(CWD,'config.case.ini'))
     
+        const.init(self.cfg)
         utils.write_log('Mercurius Initiation Done.')
 
     def as_spider(self):

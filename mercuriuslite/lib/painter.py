@@ -137,3 +137,7 @@ def get_info(y, ybase):
     info='Win: {:.1%} ({:.1%})\n'.format((y>0).sum()/len(y),(ybase>0).sum()/len(ybase))
     info=info+'Return: {:.2%} ({:.2%})'.format(y.mean(), ybase.mean())
     return info
+
+def table_print(table):
+    from tabulate import tabulate
+    print(tabulate(table,headers='firstrow',tablefmt='fancy_grid'))

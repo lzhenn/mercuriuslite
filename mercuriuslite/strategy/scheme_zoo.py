@@ -21,9 +21,9 @@ def buy_and_hold(minerva, date):
     if (cash>const.CASH_IN_HAND*port_rec['total_value']) and minerva.new_fund:
         cash_to_use=cash-const.CASH_IN_HAND*port_rec['total_value']
         for tgt in minerva.port_tgts:
-            minerva.action_dict[tgt]['value']=cash_to_use*port_dic[tgt]
+            minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
         minerva.new_fund=False
-        minerva.pos_manage(date)
+        minerva.trade(date)
 
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
