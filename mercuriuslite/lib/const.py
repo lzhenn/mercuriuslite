@@ -5,7 +5,7 @@ TRAD_DAYS={
 DAYS_PER_YEAR=365
 
 # changable by config
-CASH_IN_HAND=0.1
+CASH_IN_HAND=0.0
 NO_RISK_RETURN=0.03 # default
 
 # log

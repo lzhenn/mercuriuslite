@@ -16,23 +16,36 @@ def draw_perform_fig(df, scheme_name):
     fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
 
     # Upper plot: NAV timeseries
-    ax[0].plot(df.index, df['total_value'], label='NAV', color='blue')
-    ax[0].plot(df.index, df['accu_fund'], label='AccuFund', color='red')
-    ax[0].plot(df.index, df['norisk_total_value'], label='NoRiskV', color='green')
+    
+    ax[0].plot(df.index, df['accu_fund'], 
+        label='AccuFund', color='red', linewidth=1)
+    ax[0].plot(df.index, df['norisk_total_value'], 
+        label='NoRiskV', color='green', linewidth=1)
+    ax[0].plot(df.index, df['total_value'], 
+        label='NAV', color='blue')
     ax[0].set_ylabel('NAV')
     ax[0].legend()
 
     # Middle plot: return rate
+    ax[1].plot(df.index, df['fund_change']+1, 
+               label='ARR', color='red', linewidth=1)
+    ax[1].plot(df.index, df['baseline_return'], 
+               label='Baseline', color='green', linewidth=1)
     ax[1].plot(df.index, df['accum_return'], label='RTW', color='blue')
-    ax[1].plot(df.index, df['fund_change']+1, label='ARR', color='red')
-    ax[1].plot(df.index, df['baseline_return'], label='Baseline', color='green')
+    ax[1].hlines(y=1.0, xmin=df.index[0], xmax=df.index[-1], 
+            linewidth=1, color='grey', linestyles='--')
     ax[1].set_ylabel('Return Rate')
     ax[1].legend()
 
     # Lower plot: maximum drawdown
-    ax[2].plot(df.index, -df['drawdown'], color='blue')
+    ax[2].plot(df.index, -df['baseline_drawdown'], color='red', linewidth=1, label='Baseline')
+    ax[2].fill_between(
+        df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='orange', alpha=0.3)
+   
+    ax[2].plot(df.index, -df['drawdown'], label='Drawdown', color='blue')
     ax[2].fill_between(
         df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
+    ax[2].legend()
     ax[2].set_ylabel('Drawdown')
 
     # Set the x-axis label and title

@@ -106,6 +106,8 @@ class Minerva:
             if date in self.trading_dates:
                 mkt_value=self.basehist.loc[date]['Close']
             track.loc[date, 'baseline_return']=mkt_value/base_value
+        track['baseline_drawdown'] = (
+            track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
         painter.draw_perform_fig(track, self.scheme_name)
     def _init_portfolio(self):
         # build portfolio track
