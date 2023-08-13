@@ -7,7 +7,7 @@ import matplotlib.ticker as mtick
 print_prefix='lib.painter>>'
 
 
-def draw_perform_fig(df, scheme_name):
+def draw_perform_fig(df, scheme_name,tgts):
     # Calculate the daily return rate
 
     # Calculate the maximum drawdown
@@ -16,13 +16,23 @@ def draw_perform_fig(df, scheme_name):
     fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
 
     # Upper plot: NAV timeseries
-    
+    port_colors=['blue', 'red', 'gold']
     ax[0].plot(df.index, df['accu_fund'], 
         label='AccuFund', color='red', linewidth=1)
     ax[0].plot(df.index, df['norisk_total_value'], 
         label='NoRiskV', color='green', linewidth=1)
     ax[0].plot(df.index, df['total_value'], 
         label='NAV', color='blue')
+ 
+    ax[0].fill_between(
+        df.index, df['cash'], 0, where=df['cash']>0, color='grey', alpha=0.3)
+    #for tgt in tgts:
+    #    ax[0].fill_between(
+    #        df.index, df[tgt+'_value'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
+    
+    ax[0].set_ylabel('NAV')
+    ax[0].legend()
+   
     ax[0].set_ylabel('NAV')
     ax[0].legend()
 

@@ -27,6 +27,8 @@ class Minerva:
         self.strategy = getattr(scheme_zoo, self.scheme_name)
         self.pos_scheme_name=cfg['SCHEMER']['pos_scheme_name']
         self.pos_scheme= getattr(scheme_zoo, 'pos_'+self.pos_scheme_name)
+        self.fund_scheme_name=cfg['SCHEMER']['fund_scheme_name']
+        self.fund_scheme= getattr(scheme_zoo, 'fund_'+self.fund_scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
         self.db_path=cfg['SCHEMER']['db_path']
         self.baseticker=cfg['SCHEMER']['baseticker']
@@ -70,6 +72,8 @@ class Minerva:
                 self.model_path, model_name, tgt, baseline=False)
         self.trading_dates=self.port_hist[self.port_tgts[0]].index
         self.basehist=io.load_hist(self.db_path, self.baseticker)
+        self.basehist['drawdown'] = (
+            self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
     def backtest(self):
         '''
         '''
@@ -91,8 +95,6 @@ class Minerva:
         '''
         utils.write_log(f'{print_prefix}inspect portfolio...')
         track=self.track
-        track['drawdown'] = (
-            track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
         track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
@@ -116,7 +118,7 @@ class Minerva:
         
         eval_table=iustitia.strategy_eval(track)
         painter.table_print(eval_table) 
-        painter.draw_perform_fig(track, self.scheme_name)
+        painter.draw_perform_fig(track, self.scheme_name,self.port_tgts)
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
@@ -157,12 +159,12 @@ class Minerva:
                 for tgt in self.port_tgts:
                     value=track_rec[f'{tgt}_value']
                     self.action_dict[tgt]=port_value*port_dic[tgt]-value
-                utils.write_log(f'{print_prefix}Rebalance signal captured.')
+                    utils.write_log(f'{print_prefix}Rebalance signal captured.{tgt}:{utils.fmt_value(port_dic[tgt],vtype="pct")}')
                 self.trade(date)
                 self.defer_balance=False
             else:
                 self.defer_balance=True 
-    def _on_funding(self, date):    
+    def _on_funding(self, date):
         if date==self.dateseries[0]:
             utils.write_log(
                 f'{print_prefix}Initial funding signal captured:{self.init_fund}USD'+\
@@ -172,13 +174,16 @@ class Minerva:
             self.track.loc[date, 'accu_fund']=self.init_fund
             self.new_fund=True
         elif date in self.cash_dates:
-            self.track.loc[date,'cash']+=self.cash_flow
-            self.track.loc[date,'total_value']+=self.cash_flow
-            self.track.loc[date,'accu_fund']+=self.cash_flow
+            act_flow=self.fund_scheme(
+                self, date)
+            self.track.loc[date,'cash']+=act_flow
+            self.track.loc[date,'total_value']+=act_flow
+            self.track.loc[date,'accu_fund']+=act_flow
             self.new_fund=True
+            self.act_fund=act_flow
             utils.write_log(
                 f'{print_prefix}Funding signal captured:'+\
-                f'{self.track.loc[date,"accu_fund"]}USD (+{self.cash_flow}USD)'+\
+                f'{self.track.loc[date,"accu_fund"]}USD (+{act_flow}USD)'+\
                 f' on {date.strftime("%Y-%m-%d")}')
     def _on_trade(self, date):
         '''
@@ -201,11 +206,11 @@ class Minerva:
             self._adjust_value('Close', date)
         
         track=self.track
-        in_fund=self.cash_flow
         day_total=track.loc[date,'total_value']
         if not(date==self.dateseries[0]):
             yesterday=date+datetime.timedelta(days=-1)
             if date in self.cash_dates:
+                in_fund=self.act_fund
                 track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
                 track.loc[date, 'norisk_total_value']=(
                     track.loc[yesterday, 'norisk_total_value']+in_fund)*NRDR
@@ -215,6 +220,9 @@ class Minerva:
         else:
             track.loc[date, 'daily_return']=track.loc[date,'total_value']/self.init_fund
             track.loc[date, 'norisk_total_value']=self.init_fund*NRDR
+        
+        track['drawdown'] = (
+            track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             track.loc[tmr]=track.loc[date]
@@ -231,7 +239,7 @@ class Minerva:
             share=track.loc[date,f'{tgt}_share']
             track.loc[date,f'{tgt}_value']=share*price
             track.loc[date,'port_value']+=share*price
-        
+        track.loc[date,'cash']=track.loc[date,'cash']*NRDR
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
