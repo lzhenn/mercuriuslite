@@ -29,6 +29,8 @@ class Minerva:
         self.pos_scheme= getattr(scheme_zoo, 'pos_'+self.pos_scheme_name)
         self.fund_scheme_name=cfg['SCHEMER']['fund_scheme_name']
         self.fund_scheme= getattr(scheme_zoo, 'fund_'+self.fund_scheme_name)
+        self.cash_scheme_name=cfg['SCHEMER']['cash_scheme_name']
+        self.cash_scheme= getattr(scheme_zoo, 'cash_'+self.cash_scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
         self.db_path=cfg['SCHEMER']['db_path']
         self.baseticker=cfg['SCHEMER']['baseticker']
@@ -118,7 +120,8 @@ class Minerva:
         
         eval_table=iustitia.strategy_eval(track)
         painter.table_print(eval_table) 
-        painter.draw_perform_fig(track, self.scheme_name,self.port_tgts)
+        painter.draw_perform_fig(
+            track, self.scheme_name, self.port_tgts, eval_table)
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
@@ -155,19 +158,26 @@ class Minerva:
             if self.trade_flag:
                 port_dic=self.pos_scheme(self, date)
                 track_rec=self.track.loc[date]
-                port_value=track_rec['port_value']
+                total_value=track_rec['total_value']
+                cash_portion=track_rec["cash"]/track_rec["total_value"]
+                cash_str=f'{utils.fmt_value(cash_portion,vtype="pct")}'
+                utils.write_log(
+                    f'{print_prefix}Rebalance signal captured. Cash:{cash_str}')
                 for tgt in self.port_tgts:
                     value=track_rec[f'{tgt}_value']
-                    self.action_dict[tgt]=port_value*port_dic[tgt]-value
-                    utils.write_log(f'{print_prefix}Rebalance signal captured.{tgt}:{utils.fmt_value(port_dic[tgt],vtype="pct")}')
+                    self.action_dict[tgt]=total_value*port_dic[tgt]-value
+                    utils.write_log(
+                        f'{print_prefix}Rebalance signal captured.{tgt}:{utils.fmt_value(port_dic[tgt],vtype="pct")}')
                 self.trade(date)
                 self.defer_balance=False
+            
             else:
                 self.defer_balance=True 
     def _on_funding(self, date):
         if date==self.dateseries[0]:
+            fund_str=utils.fmt_value(self.init_fund)
             utils.write_log(
-                f'{print_prefix}Initial funding signal captured:{self.init_fund}USD'+\
+                f'{print_prefix}Initial funding signal captured, current fund:{fund_str}'+\
                 f' on {date.strftime("%Y-%m-%d")}')
             self.track.loc[date, 'cash']=self.init_fund
             self.track.loc[date, 'total_value']=self.init_fund
@@ -182,8 +192,8 @@ class Minerva:
             self.new_fund=True
             self.act_fund=act_flow
             utils.write_log(
-                f'{print_prefix}Funding signal captured:'+\
-                f'{self.track.loc[date,"accu_fund"]}USD (+{act_flow}USD)'+\
+                f'{print_prefix}Funding signal captured, current fund:'+\
+                f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
                 f' on {date.strftime("%Y-%m-%d")}')
     def _on_trade(self, date):
         '''

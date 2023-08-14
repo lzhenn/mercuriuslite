@@ -60,37 +60,41 @@ class Iustitia:
             
     
 def strategy_eval(track):
-    table=[['Metrics', 'Value']]
+    table_dic={}
     track_start=track.iloc[0]
     track_end=track.iloc[-1]
     
-    table.append(['Backtest Start:', track.index[0].strftime("%Y-%m-%d")])
-    table.append(['Backtest End:', track.index[-1].strftime("%Y-%m-%d")])
+    table_dic['Backtest Start:']=track.index[0].strftime("%Y-%m-%d")
+    table_dic['Backtest End:']=track.index[-1].strftime("%Y-%m-%d")
     val=(track.index[-1]-track.index[0]).days+1
     total_days=val
-    table.append(['Total Test Duration', f'{val} days'])
+    table_dic['Total Test Duration']=f'{val} days'
     
     val=utils.fmt_value(track_end['accu_fund'])
-    table.append(['Cummulative Funding', val])
+    table_dic['Cumulative Funding']=val
     
     val=utils.fmt_value(track_end['total_value'])
-    table.append(['Cummulative Value', val])
+    table_dic['Cumulative Value']=val
     
     twr=track_end['accum_return']-1
     val=utils.fmt_value(twr,vtype='pct')
-    table.append(['Time-Weighted Return (TWR)', val])
+    table_dic['Time-Weighted Return (TWR)']=val
     
     val=utils.fmt_value(track_end['fund_change'],vtype='pct')
-    table.append(['Average Rate of Return (ARR)', val])
+    table_dic['Average Rate of Return (ARR)']=val 
     
-    val=utils.fmt_value(
-        np.power((1+twr),float(const.DAYS_PER_YEAR)/total_days)-1,vtype='pct')
-    table.append(['Compound Annual Growth Rate (CAGR)',val])
+    cagr=mathlib.cagr(twr,total_days)
+    val=utils.fmt_value(cagr,vtype='pct')
+    table_dic['Compound Annual Growth Rate (CAGR)']=val
     
-    val=utils.fmt_value(-track['drawdown'].max(),vtype='pct')
-    table.append(['Max Drawdown', val])
+    drawdown=track['drawdown'].max()
+    val=utils.fmt_value(-drawdown,vtype='pct')
+    table_dic['Max Drawdown']=val
+   
+    val=utils.fmt_value(cagr/drawdown,vtype='f')
+    table_dic['MAR']=val
     
     val=utils.fmt_value(
         track_end['norisk_total_value']/track_end['accu_fund']-1,vtype='pct')
-    table.append(['No Risk ARR', val])
-    return table
+    table_dic['No Risk ARR']=val 
+    return table_dic

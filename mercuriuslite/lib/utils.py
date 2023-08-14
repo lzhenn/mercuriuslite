@@ -70,12 +70,11 @@ def cal_trade_day(lead_str):
     throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
 
 def gen_date_intervals(dateseries, interval):
-    for key_wd in ['W','M','Q','Y']:
-        if key_wd in interval:
-            dates=pd.date_range(start=dateseries[1], end=dateseries[-1], freq=key_wd)
-            return dates.to_list()
-    if interval == 'none':
-        return []
+    try:
+        dates=pd.date_range(start=dateseries[1], end=dateseries[-1], freq=interval)
+        return dates.to_list()
+    except:
+        throw_error(f'invalid date interval: {interval}')
    
 def parse_intime(dt_str):
     if not(dt_str=='0'):
@@ -100,15 +99,19 @@ def cal_trade(price, cash_in):
     cash_left=cash_in-share*price
     return share, cash_left
 
-def cal_exposure_assign(tgts, portions):
-    pass
+
+def cal_days_since_mjdown(date, drawdown, thresh=0.05):
+    dates=drawdown.index
+    date_pos=date
+    while (date_pos in dates) and (drawdown[date_pos]<thresh):
+        date_pos=dates[dates.get_loc(date_pos)-1]
+    return (date-date_pos).days
 # ---Unit test---
 if __name__ == '__main__':
     pass
 
 def fmt_value(val, vtype='usd', dec=2):
     # vtype='usd','pct'
-    
     if vtype=='usd':
         fmt_val=f'${val:.2f}'
     if vtype=='pct':
@@ -116,4 +119,7 @@ def fmt_value(val, vtype='usd', dec=2):
             fmt_val=f'+{val:.2%}'
         else:
             fmt_val=f'{val:.2%}'
+    if vtype=='f':
+        fmt_val=f'{val:.2f}'
+        
     return fmt_val 

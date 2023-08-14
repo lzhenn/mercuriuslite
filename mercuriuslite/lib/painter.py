@@ -1,4 +1,4 @@
-from . import const
+from . import const, utils, mathlib
 import matplotlib, os, datetime
 import numpy as np
 matplotlib.use('Agg')
@@ -7,7 +7,7 @@ import matplotlib.ticker as mtick
 print_prefix='lib.painter>>'
 
 
-def draw_perform_fig(df, scheme_name,tgts):
+def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     # Calculate the daily return rate
 
     # Calculate the maximum drawdown
@@ -15,47 +15,67 @@ def draw_perform_fig(df, scheme_name,tgts):
     # Plot the three figures
     fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
 
-    # Upper plot: NAV timeseries
+    # ----------Upper plot: NAV timeseries
     port_colors=['blue', 'red', 'gold']
     ax[0].plot(df.index, df['accu_fund'], 
-        label='AccuFund', color='red', linewidth=1)
+        label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
+        color='red', linewidth=1)
     ax[0].plot(df.index, df['norisk_total_value'], 
-        label='NoRiskV', color='green', linewidth=1)
+        label=f'NoRiskV: {utils.fmt_value(df.iloc[-1]["norisk_total_value"])}', 
+        color='green', linewidth=1)
     ax[0].plot(df.index, df['total_value'], 
-        label='NAV', color='blue')
+        label=f'NAV: {utils.fmt_value(df.iloc[-1]["total_value"])}', 
+        color='blue')
  
     ax[0].fill_between(
-        df.index, df['cash'], 0, where=df['cash']>0, color='grey', alpha=0.3)
-    #for tgt in tgts:
-    #    ax[0].fill_between(
-    #        df.index, df[tgt+'_value'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
-    
+        df.index, df['cash'], 0, where=df['cash']>0, 
+        color='green', alpha=0.3, 
+        label=f'Cash ({utils.fmt_value(df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct")})')
+    df_accu=df['cash']
+    for idx,tgt in enumerate(tgts):
+        ax[0].fill_between(
+            df.index, df[tgt+'_value']+df_accu, df_accu, 
+            where=df_accu>0, color=port_colors[idx], alpha=0.3,
+            label=f'{tgt} ({utils.fmt_value(df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct")})')
+        df_accu=df_accu+df[tgt+'_value']
+    #ax[0].set_yscale('log')
     ax[0].set_ylabel('NAV')
-    ax[0].legend()
-   
-    ax[0].set_ylabel('NAV')
-    ax[0].legend()
+    ax[0].legend(loc='upper left',fontsize=const.SM_SIZE)
 
-    # Middle plot: return rate
+    # ------------Middle plot: return rate
     ax[1].plot(df.index, df['fund_change']+1, 
-               label='ARR', color='red', linewidth=1)
+               label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
+               color='red', linewidth=1)
+    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,len(df)),vtype="pct")
     ax[1].plot(df.index, df['baseline_return'], 
-               label='Baseline', color='green', linewidth=1)
-    ax[1].plot(df.index, df['accum_return'], label='RTW', color='blue')
+               label=f'Baseline ({utils.fmt_value(df.iloc[-1]["baseline_return"]-1,vtype="pct")}|{cagr_str})',
+               color='orange', linewidth=1)
+    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['accum_return']-1,len(df)),vtype="pct")
+    ax[1].plot(df.index, df['accum_return'], 
+               label=f'TWR ({utils.fmt_value(df.iloc[-1]["accum_return"]-1,vtype="pct")}|{cagr_str})', 
+               color='blue')
+    
+    no_risk=df['norisk_total_value']/df['accu_fund']
+    ax[1].plot(df.index, no_risk, 
+               label=f'NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
+               color='green', linewidth=1)
+    
     ax[1].hlines(y=1.0, xmin=df.index[0], xmax=df.index[-1], 
             linewidth=1, color='grey', linestyles='--')
     ax[1].set_ylabel('Return Rate')
-    ax[1].legend()
+    ax[1].legend(loc='upper left',fontsize=const.SM_SIZE)
 
     # Lower plot: maximum drawdown
-    ax[2].plot(df.index, -df['baseline_drawdown'], color='red', linewidth=1, label='Baseline')
+    ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', linewidth=1, 
+        label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
     ax[2].fill_between(
-        df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='orange', alpha=0.3)
+        df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
    
-    ax[2].plot(df.index, -df['drawdown'], label='Drawdown', color='blue')
+    ax[2].plot(df.index, -df['drawdown'], alpha=0.5, 
+               label=f'Drawdown (Max: {utils.fmt_value(-df["drawdown"].max(),vtype="pct")})', color='blue')
     ax[2].fill_between(
         df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
-    ax[2].legend()
+    ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
     ax[2].set_ylabel('Drawdown')
 
     # Set the x-axis label and title
@@ -150,4 +170,5 @@ def get_info(y, ybase):
 
 def table_print(table):
     from tabulate import tabulate
-    print(tabulate(table,headers='firstrow',tablefmt='fancy_grid'))
+    print(tabulate(
+        table.items(),headers=['Metrics', 'Value'],tablefmt='fancy_grid'))

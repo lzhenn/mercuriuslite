@@ -13,6 +13,9 @@ print_prefix='lib.math>>'
 def ar2dr(x):
     x=x+1
     return x**(1.0/const.DAYS_PER_YEAR)
+
+def cagr(r, ndays):
+    return (1+r)**(const.DAYS_PER_YEAR/ndays)-1
 def get_closest_samples(matR, x, nsub=0.05):
     n_samples = matR.shape[0]
     n_subsamples = int(nsub * n_samples)
