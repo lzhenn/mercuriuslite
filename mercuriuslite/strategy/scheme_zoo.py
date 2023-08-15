@@ -17,17 +17,16 @@ def buy_and_hold(minerva, date):
     ''' buy and hold strategy'''
     port_rec=minerva.track.loc[date]
     cash = port_rec['cash']
-    cash_portion=minerva.cash_scheme(minerva, date)
     #cash_portion=cash_fixed(minerva, date)
     ntgt=len(minerva.port_tgts)
-    if (cash>cash_portion*port_rec['total_value']) and minerva.new_fund:
+    if minerva.new_fund:
         port_dic=minerva.pos_scheme(minerva, date)
-        cash_to_use=cash-cash_portion*port_rec['total_value']
-        for tgt in minerva.port_tgts:
-            minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
+        cash_to_use=cash-port_dic['cash']*port_rec['total_value']
+        if cash_to_use>0:
+            for tgt in minerva.port_tgts:
+                minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
+            minerva.trade(date)
         minerva.new_fund=False
-        minerva.trade(date)
-
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
     pos_dic={}
@@ -49,34 +48,45 @@ def pos_seesaw(minerva, date):
     portions=[float(port) for port in portions]
     portions=np.asarray(portions)
     portions=portions/portions.sum()
-    cash_portion=minerva.cash_scheme(minerva, date) 
-    portions=portions*(1-cash_portion)
-    time_since_mjdown=0
-    if hist.loc[date]['drawdown']<0.05:
-        time_since_mjdown=utils.cal_days_since_mjdown(date,hist['drawdown'])/30
+    
+    cash_portion=minerva.cash_scheme(minerva, date)
+    pos_dic['cash']=cash_portion 
     # adjust by portfolio portion
-    drawdown=hist.loc[date]['drawdown']*(1-cash_portion)
+    drawdown=hist.loc[date]['drawdown']
+   
+    defense=0.0
+    if drawdown<0.05:
+        defense=new_high_defense(hist, date)
+    
+    sum_tgt=0.0
     for tgt,portion in zip(tgts,portions):
         if tgt in ['SPY','QQQ']:
-            pos_dic[tgt]=portion-drawdown
+            pos_dic[tgt]=portion-drawdown+defense
         elif tgt in ['SPXL','TQQQ']:
-            pos_dic[tgt]=max(portion+drawdown-time_since_mjdown*0.02,0)
+            pos_dic[tgt]=min(max(portion+drawdown-defense,0.05),0.35)
         else:
             pos_dic[tgt]=portion
+        sum_tgt+=pos_dic[tgt]
+    # normalize
+    for tgt,portion in zip(tgts,portions):
+        pos_dic[tgt]=(pos_dic[tgt]/sum_tgt)*(1-cash_portion)
+    #print(f'drawdown: {drawdown}')
     return pos_dic
 
-
-    pass 
 def fund_fixed(minerva, date):
     infund=minerva.cash_flow
     return infund
+
 def fund_dynamic(minerva, date):
     # (drawdown, additional cashflow %)
     portion_adj=[
-        (0.3,10),(0.25,8),(0.2,6),(0.15,4),(0.1,2)]
+        (0.3,8),(0.25,6),(0.2,4),(0.15,2),(0.1,1),(0.05,0.5)]
     infund=minerva.cash_flow
-    yesterday=date+datetime.timedelta(days=-1)
-    drawdown=minerva.track.loc[yesterday]['drawdown']
+    hist=minerva.basehist
+    pretday=date+datetime.timedelta(days=-1)
+    while (pretday not in hist.index) and (pretday>hist.index[0]):
+        pretday=pretday-datetime.timedelta(days=1)
+    drawdown=hist.loc[pretday]['drawdown']
     for adj in portion_adj:
         drawdown_lv=adj[0]
         cash_portion_adj=adj[1]
@@ -90,15 +100,42 @@ def cash_fixed(minerva, date):
 
 def cash_dynamic(minerva, date):
     # (drawdown, cash_change)
+    
     portion_adj=[
-        (0.3,-0.2),(0.25,-0.2),(0.2,-0.2),(0.15,-0.15),(0.1,-0.1),(0.05,-0.05)]
+        (0.3,-0.2),(0.25,-0.2),(0.2,-0.2),
+        (0.15,-0.15),(0.1,-0.1),(0.05,-0.05)]
+    
     balance_portion=const.CASH_IN_HAND
+    
+    if date==minerva.track.index[0]:
+        return balance_portion
+    
+    rec_now=minerva.track.loc[date]
+    cash_portion_now=rec_now['cash']/rec_now['total_value']
     drawdown_now=minerva.basehist.loc[date]['drawdown']
+    
+    # drawdown<5%
+    if drawdown_now<0.05:
+        add_cash=new_high_defense(minerva.basehist, date)
+        return add_cash+balance_portion
+    
+    # drawdown>=5%
     for adj in portion_adj:
         drawdown_lv=adj[0]
         cash_portion_adj=adj[1]
-        if drawdown_now>drawdown_lv:
+        if drawdown_now>=drawdown_lv:
             balance_portion+=cash_portion_adj
+            cash_portion_now+=cash_portion_adj
             break
-    return balance_portion
+    return min(const.CASH_IN_HAND*1.5,max(cash_portion_now,balance_portion,0.05))
+
+def new_high_defense(hist, date):
     
+    time_since_mjdown=utils.cal_days_since_mjdown(
+        date, hist['drawdown'], thresh=const.MAJOR_DRAWDOWN)/const.DAYS_PER_MONTH
+    
+    # one month no major drawdown, add 2% defensive portion
+    defense=0.01*time_since_mjdown
+    if defense>0.5*const.CASH_IN_HAND:
+        defense=0.5*const.CASH_IN_HAND
+    return defense

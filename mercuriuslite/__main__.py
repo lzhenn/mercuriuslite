@@ -45,22 +45,15 @@ class Mercurius:
         const.init(self.cfg)
         utils.write_log('Mercurius Initiation Done.')
 
-    def as_spider(self):
-        from .lib import spider
-        tickers=self.cfg['SPIDER']['tickers'].replace(' ','').split(',')
-        archive_dir=self.cfg['SPIDER']['archive_dir']
-        for ticker in tickers:
-            utils.write_log(f'Fetching data for {ticker}')
-            spider.fetch(ticker, archive_dir)
-    
+    def as_crawler(self):
+        from .lib import crawler
+        self.crawler=crawler.Andariel(self.cfg) 
     def as_predictor(self):
         from .model import oculus
         self.predictor=oculus.Oculus(self.cfg)
-
     def as_evaluator(self, predictor):
         from .eval import iustitia
         self.evaluator=iustitia.Iustitia(predictor, self.cfg)
-
     def as_trader(self):
         from .strategy import minerva
         self.trader=minerva.Minerva(self.cfg)

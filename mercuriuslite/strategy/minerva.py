@@ -155,24 +155,26 @@ class Minerva:
     
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
-            if self.trade_flag:
+            if date in self.trading_dates:    
+                utils.write_log(f'{print_prefix}Rebalance signal captured.')
                 port_dic=self.pos_scheme(self, date)
                 track_rec=self.track.loc[date]
                 total_value=track_rec['total_value']
                 cash_portion=track_rec["cash"]/track_rec["total_value"]
-                cash_str=f'{utils.fmt_value(cash_portion,vtype="pct")}'
-                utils.write_log(
-                    f'{print_prefix}Rebalance signal captured. Cash:{cash_str}')
                 for tgt in self.port_tgts:
                     value=track_rec[f'{tgt}_value']
                     self.action_dict[tgt]=total_value*port_dic[tgt]-value
-                    utils.write_log(
-                        f'{print_prefix}Rebalance signal captured.{tgt}:{utils.fmt_value(port_dic[tgt],vtype="pct")}')
-                self.trade(date)
-                self.defer_balance=False
-            
+                self.trade(date,call_from='Rebalance')
+                print_dic = {k: round(v, 2) for k, v in port_dic.items()}
+                utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic}')
+                self.defer_balance=False 
             else:
-                self.defer_balance=True 
+                self.defer_balance=True
+                
+    def _on_trade(self, date):
+        if (date in self.trading_dates):
+            if not(date in self.balance_dates or self.defer_balance):
+                self.strategy(self, date)
     def _on_funding(self, date):
         if date==self.dateseries[0]:
             fund_str=utils.fmt_value(self.init_fund)
@@ -183,6 +185,7 @@ class Minerva:
             self.track.loc[date, 'total_value']=self.init_fund
             self.track.loc[date, 'accu_fund']=self.init_fund
             self.new_fund=True
+            self.act_fund=self.init_fund
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(
                 self, date)
@@ -195,24 +198,14 @@ class Minerva:
                 f'{print_prefix}Funding signal captured, current fund:'+\
                 f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
                 f' on {date.strftime("%Y-%m-%d")}')
-    def _on_trade(self, date):
-        '''
-        '''
-        self.trade_flag=True
-        if date in self.trading_dates:
-            #self._adjust_value('Open', date)
-            self.strategy(self, date)
-        else:
-            #utils.write_log(
-            #    f'{print_prefix}Market closed on {date.strftime("%Y-%m-%d")}')
-            self.trade_flag=False
+
 
     def _on_rolling(self, date): 
         '''
         rolling the whole pipeline 
         wrap the day close and roll to the next day open
         '''
-        if self.trade_flag:
+        if date in self.trading_dates:    
             self._adjust_value('Close', date)
         
         track=self.track
@@ -253,7 +246,7 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def trade(self,date):
+    def trade(self,date, call_from='DCA'):
         '''
         determine exact position change, for input
         action_dict= 
@@ -273,7 +266,7 @@ class Minerva:
             share, cash_fra=utils.cal_trade(trade_price, val)
             if not(share==0):
                 utils.write_log(
-                    f'{print_prefix}Trade signal captured:{share:.0f} shares'+\
+                    f'{print_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
                     f' on {date.strftime("%Y-%m-%d")}'
                 )
@@ -282,7 +275,6 @@ class Minerva:
                 track.loc[date,'port_value']+=share*trade_price
                 track.loc[date,'cash']-=share*trade_price
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
-   
     def risk_manage(self,date):
         pass     
     def realtime():

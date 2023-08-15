@@ -13,9 +13,9 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     # Calculate the maximum drawdown
 
     # Plot the three figures
-    fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,8))
-
-    # ----------Upper plot: NAV timeseries
+    fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
+    fig.subplots_adjust(hspace=0)
+    # ----------plot 0: NAV timeseries
     port_colors=['blue', 'red', 'gold']
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
@@ -28,21 +28,22 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
         color='blue')
  
     ax[0].fill_between(
-        df.index, df['cash'], 0, where=df['cash']>0, 
+        df.index, df['cash'], 0, 
         color='green', alpha=0.3, 
         label=f'Cash ({utils.fmt_value(df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct")})')
     df_accu=df['cash']
     for idx,tgt in enumerate(tgts):
         ax[0].fill_between(
-            df.index, df[tgt+'_value']+df_accu, df_accu, 
-            where=df_accu>0, color=port_colors[idx], alpha=0.3,
+            df.index, df[tgt+'_value']+df_accu, df_accu,
+            color=port_colors[idx], alpha=0.3,
             label=f'{tgt} ({utils.fmt_value(df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct")})')
         df_accu=df_accu+df[tgt+'_value']
     #ax[0].set_yscale('log')
     ax[0].set_ylabel('NAV')
     ax[0].legend(loc='upper left',fontsize=const.SM_SIZE)
+    ax[0].set_title('Portfolio Performance')
 
-    # ------------Middle plot: return rate
+    # ------------plot 1: return rate
     ax[1].plot(df.index, df['fund_change']+1, 
                label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
                color='red', linewidth=1)
@@ -65,7 +66,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     ax[1].set_ylabel('Return Rate')
     ax[1].legend(loc='upper left',fontsize=const.SM_SIZE)
 
-    # Lower plot: maximum drawdown
+    # ------------plot 2: maximum drawdown
     ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', linewidth=1, 
         label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
     ax[2].fill_between(
@@ -75,12 +76,25 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
                label=f'Drawdown (Max: {utils.fmt_value(-df["drawdown"].max(),vtype="pct")})', color='blue')
     ax[2].fill_between(
         df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
+    
+    hlines=[(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
+            (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
+            (-0.25,'orange',1,'--'),(-0.3,'red',1,'--')]
+    for hline in hlines:
+        if abs(hline[0])<df['baseline_drawdown'].max():
+            ax[2].hlines(y=hline[0], xmin=df.index[0], xmax=df.index[-1], 
+                linewidth=hline[2], color=hline[1], linestyles=hline[3])
+   
+    
     ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
     ax[2].set_ylabel('Drawdown')
 
+    # ------------plot 3: funding pulse
+    fund_pulse=df['accu_fund'].diff()
+    ax[3].plot(df.index, fund_pulse, color='red', linewidth=1)
+
     # Set the x-axis label and title
     plt.xlabel('Date')
-    plt.suptitle('Portfolio Performance')
 
     # Show the plot
     plt.show()
