@@ -8,7 +8,7 @@
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
 import numpy as np
-from ..lib import const, utils
+from ..lib import const, utils, mathlib, io
 import datetime
 
 # ------------------------Buy and Hold------------------------
@@ -19,14 +19,12 @@ def buy_and_hold(minerva, date):
     cash = port_rec['cash']
     #cash_portion=cash_fixed(minerva, date)
     ntgt=len(minerva.port_tgts)
-    if minerva.new_fund:
-        port_dic=minerva.pos_scheme(minerva, date)
-        cash_to_use=cash-port_dic['cash']*port_rec['total_value']
-        if cash_to_use>0:
-            for tgt in minerva.port_tgts:
-                minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
-            minerva.trade(date)
-        minerva.new_fund=False
+    port_dic=minerva.pos_scheme(minerva, date)
+    cash_to_use=cash-port_dic['cash']*port_rec['total_value']
+    if cash_to_use>0:
+        for tgt in minerva.port_tgts:
+            minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
+        minerva.trade(date)
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
     pos_dic={}
@@ -62,8 +60,11 @@ def pos_seesaw(minerva, date):
     for tgt,portion in zip(tgts,portions):
         if tgt in ['SPY','QQQ']:
             pos_dic[tgt]=portion-drawdown+defense
-        elif tgt in ['SPXL','TQQQ']:
-            pos_dic[tgt]=min(max(portion+drawdown-defense,0.05),0.35)
+        elif tgt =='SPXL':
+            pos_dic[tgt]=min(max(portion+drawdown-defense,0.00),0.35)
+        elif tgt =='TQQQ':
+            pos_dic[tgt]=min(max(portion+0.5*drawdown-defense,0.00),0.25)
+            
         else:
             pos_dic[tgt]=portion
         sum_tgt+=pos_dic[tgt]
@@ -107,6 +108,10 @@ def cash_dynamic(minerva, date):
     
     balance_portion=const.CASH_IN_HAND
     
+    # alter by norisk interest
+    NRYR=mathlib.dr2ar(minerva.NRDR)
+    balance_portion=balance_portion+(NRYR-1)*2.0
+     
     if date==minerva.track.index[0]:
         return balance_portion
     
@@ -128,6 +133,17 @@ def cash_dynamic(minerva, date):
             cash_portion_now+=cash_portion_adj
             break
     return min(const.CASH_IN_HAND*1.5,max(cash_portion_now,balance_portion,0.05))
+
+def norisk_fixed(minerva, date):
+    NRDR=mathlib.ar2dr(const.NO_RISK_RETURN)
+    return NRDR
+def norisk_dynamic(minerva, date):
+    norisk=minerva.noriskhist
+    pretday=date+datetime.timedelta(days=-1)
+    while (pretday not in norisk.index) and (pretday>norisk.index[0]):
+        pretday=pretday-datetime.timedelta(days=1)
+    NRDR=mathlib.ar2dr(norisk.loc[pretday]['Close']/100*0.8)
+    return NRDR
 
 def new_high_defense(hist, date):
     

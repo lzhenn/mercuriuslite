@@ -16,7 +16,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
-    port_colors=['blue', 'red', 'gold']
+    port_colors=['blue', 'red', 'purple', 'orange', 'gold']
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
         color='red', linewidth=1)
@@ -92,6 +92,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     # ------------plot 3: funding pulse
     fund_pulse=df['accu_fund'].diff()
     ax[3].plot(df.index, fund_pulse, color='red', linewidth=1)
+    ax[3].set_ylabel('Cash Flow')
 
     # Set the x-axis label and title
     plt.xlabel('Date')

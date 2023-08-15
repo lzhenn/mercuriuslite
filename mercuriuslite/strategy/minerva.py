@@ -13,7 +13,6 @@ import pandas as pd
 
 # ---Module regime consts and variables---
 # no risk daily return
-NRDR=mathlib.ar2dr(const.NO_RISK_RETURN)
 
 # ---Classes and Functions---
 
@@ -31,6 +30,8 @@ class Minerva:
         self.fund_scheme= getattr(scheme_zoo, 'fund_'+self.fund_scheme_name)
         self.cash_scheme_name=cfg['SCHEMER']['cash_scheme_name']
         self.cash_scheme= getattr(scheme_zoo, 'cash_'+self.cash_scheme_name)
+        self.norisk_scheme_name=cfg['SCHEMER']['norisk_scheme_name']
+        self.norisk_scheme = getattr(scheme_zoo, 'norisk_'+self.norisk_scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
         self.db_path=cfg['SCHEMER']['db_path']
         self.baseticker=cfg['SCHEMER']['baseticker']
@@ -64,7 +65,10 @@ class Minerva:
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
         self.defer_balance=False
-    
+       
+        # no risk
+        if self.norisk_scheme_name=='dynamic':
+            self.noriskhist=io.load_hist(self.db_path, '^IRX')
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
@@ -149,8 +153,8 @@ class Minerva:
         '''
         #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
         self._on_funding(date)
-        self._on_trade(date)
         self._on_rebalance(date)
+        self._on_trade(date)
         self._on_rolling(date)
     
     def _on_rebalance(self, date):
@@ -170,11 +174,13 @@ class Minerva:
                 self.defer_balance=False 
             else:
                 self.defer_balance=True
+            # skip this month DCA invest
+            self.new_fund=False
                 
     def _on_trade(self, date):
-        if (date in self.trading_dates):
-            if not(date in self.balance_dates or self.defer_balance):
-                self.strategy(self, date)
+        if (date in self.trading_dates and self.new_fund):
+            self.strategy(self, date)
+            self.new_fund=False
     def _on_funding(self, date):
         if date==self.dateseries[0]:
             fund_str=utils.fmt_value(self.init_fund)
@@ -186,6 +192,7 @@ class Minerva:
             self.track.loc[date, 'accu_fund']=self.init_fund
             self.new_fund=True
             self.act_fund=self.init_fund
+            self.NRDR=self.norisk_scheme(self,date)
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(
                 self, date)
@@ -210,19 +217,20 @@ class Minerva:
         
         track=self.track
         day_total=track.loc[date,'total_value']
+        self.NRDR=self.norisk_scheme(self,date)
         if not(date==self.dateseries[0]):
             yesterday=date+datetime.timedelta(days=-1)
             if date in self.cash_dates:
                 in_fund=self.act_fund
                 track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
                 track.loc[date, 'norisk_total_value']=(
-                    track.loc[yesterday, 'norisk_total_value']+in_fund)*NRDR
+                    track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
             else:
                 track.loc[date, 'daily_return']=day_total/track.loc[yesterday,'total_value']
-                track.loc[date, 'norisk_total_value']=track.loc[yesterday, 'norisk_total_value']*NRDR
+                track.loc[date, 'norisk_total_value']=track.loc[yesterday, 'norisk_total_value']*self.NRDR
         else:
             track.loc[date, 'daily_return']=track.loc[date,'total_value']/self.init_fund
-            track.loc[date, 'norisk_total_value']=self.init_fund*NRDR
+            track.loc[date, 'norisk_total_value']=self.init_fund*self.NRDR
         
         track['drawdown'] = (
             track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
@@ -242,7 +250,7 @@ class Minerva:
             share=track.loc[date,f'{tgt}_share']
             track.loc[date,f'{tgt}_value']=share*price
             track.loc[date,'port_value']+=share*price
-        track.loc[date,'cash']=track.loc[date,'cash']*NRDR
+        track.loc[date,'cash']=track.loc[date,'cash']*self.NRDR
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 

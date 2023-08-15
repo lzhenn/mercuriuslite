@@ -14,6 +14,10 @@ def ar2dr(x):
     x=x+1
     return x**(1.0/const.DAYS_PER_YEAR)
 
+def dr2ar(x):
+    if x<1:
+        utils.throw(f'daily interest rate must be greater than 1')
+    return x**(const.DAYS_PER_YEAR)
 def cagr(r, ndays):
     return (1+r)**(const.DAYS_PER_YEAR/ndays)-1
 def get_closest_samples(matR, x, nsub=0.05):
