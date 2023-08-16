@@ -2,13 +2,35 @@
 """strategy zoo"""
 
 # ****************Available strategies*****************
+#   --Portfolio
+#       buy_and_hold
 #
-#   buy_and_hold
-#   gridding 
+#   --position
+#       pos_prescribe
+#       pos_seesaw
+#
+#   --funding
+#       fund_fixed
+#       fund_dynamic
+#
+#   --cash
+#       cash_fixed
+#       cash_dynamic
+#
+#   --norisk
+#       norisk_fixed
+#       norisk_dynamic
+#
+#   --other
+#       new_high_defense: calculate defensive portion 
+#           if target reached new high
+#       ma_crossover: calculate MA crossover
+#
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
 import numpy as np
 from ..lib import const, utils, mathlib, io
+from . import indicators
 import datetime
 
 # ------------------------Buy and Hold------------------------
@@ -54,7 +76,7 @@ def pos_seesaw(minerva, date):
    
     defense=0.0
     if drawdown<0.05:
-        defense=new_high_defense(hist, date)
+        defense=indicators.new_high_defense(hist, date)
     
     sum_tgt=0.0
     for tgt,portion in zip(tgts,portions):
@@ -63,8 +85,7 @@ def pos_seesaw(minerva, date):
         elif tgt =='SPXL':
             pos_dic[tgt]=min(max(portion+drawdown-defense,0.00),0.35)
         elif tgt =='TQQQ':
-            pos_dic[tgt]=min(max(portion+0.5*drawdown-defense,0.00),0.25)
-            
+            pos_dic[tgt]=min(max(portion+drawdown-0.05-defense,0.00),0.25)
         else:
             pos_dic[tgt]=portion
         sum_tgt+=pos_dic[tgt]
@@ -73,7 +94,7 @@ def pos_seesaw(minerva, date):
         pos_dic[tgt]=(pos_dic[tgt]/sum_tgt)*(1-cash_portion)
     #print(f'drawdown: {drawdown}')
     return pos_dic
-
+# ================== For funding schemes
 def fund_fixed(minerva, date):
     infund=minerva.cash_flow
     return infund
@@ -96,6 +117,7 @@ def fund_dynamic(minerva, date):
             break
     return infund
 
+# ================== For cash schemes
 def cash_fixed(minerva, date):
     return const.CASH_IN_HAND
 
@@ -121,7 +143,7 @@ def cash_dynamic(minerva, date):
     
     # drawdown<5%
     if drawdown_now<0.05:
-        add_cash=new_high_defense(minerva.basehist, date)
+        add_cash=indicators.new_high_defense(minerva.basehist, date)
         return add_cash+balance_portion
     
     # drawdown>=5%
@@ -132,8 +154,9 @@ def cash_dynamic(minerva, date):
             balance_portion+=cash_portion_adj
             cash_portion_now+=cash_portion_adj
             break
-    return min(const.CASH_IN_HAND*1.5,max(cash_portion_now,balance_portion,0.05))
-
+    return min(const.CASH_IN_HAND*1.5,
+        max(cash_portion_now,balance_portion,const.CASH_IN_HAND*0.5))
+# ================== For norisk schemes
 def norisk_fixed(minerva, date):
     NRDR=mathlib.ar2dr(const.NO_RISK_RETURN)
     return NRDR
@@ -144,14 +167,3 @@ def norisk_dynamic(minerva, date):
         pretday=pretday-datetime.timedelta(days=1)
     NRDR=mathlib.ar2dr(norisk.loc[pretday]['Close']/100*0.8)
     return NRDR
-
-def new_high_defense(hist, date):
-    
-    time_since_mjdown=utils.cal_days_since_mjdown(
-        date, hist['drawdown'], thresh=const.MAJOR_DRAWDOWN)/const.DAYS_PER_MONTH
-    
-    # one month no major drawdown, add 2% defensive portion
-    defense=0.01*time_since_mjdown
-    if defense>0.5*const.CASH_IN_HAND:
-        defense=0.5*const.CASH_IN_HAND
-    return defense

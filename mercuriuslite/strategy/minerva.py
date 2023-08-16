@@ -6,7 +6,7 @@ print_prefix='strategy.minerva>>'
 # ---imports---
 from ..lib import utils, io, const, painter, mathlib
 from ..eval import iustitia
-from . import scheme_zoo
+from . import scheme_zoo, indicators
 import datetime
 import numpy as np
 import pandas as pd
@@ -69,6 +69,7 @@ class Minerva:
         # no risk
         if self.norisk_scheme_name=='dynamic':
             self.noriskhist=io.load_hist(self.db_path, '^IRX')
+            
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
@@ -80,6 +81,13 @@ class Minerva:
         self.basehist=io.load_hist(self.db_path, self.baseticker)
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
+        
+        crossover=indicators.ma_crossover(
+                self.port_hist['TQQQ'], shortlag=21, longlag=126)
+        for idx, date in enumerate(self.port_hist['TQQQ'].index):
+            if not(crossover[idx]==0):
+                print(date,crossover[idx])
+        exit()
     def backtest(self):
         '''
         '''
@@ -126,6 +134,21 @@ class Minerva:
         painter.table_print(eval_table) 
         painter.draw_perform_fig(
             track, self.scheme_name, self.port_tgts, eval_table)
+    
+    def _event_process(self, date):
+        '''
+        listen to events: 
+        1. funding signal
+        2. trade signal
+        3. rebalance signal
+        '''
+        #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
+        self._on_funding(date)
+        self._on_rebalance(date)
+        self._on_trade(date)
+        self._on_rolling(date)
+    
+
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
@@ -141,22 +164,6 @@ class Minerva:
             self.track[f'{ticker}_value']=0.0
             self.track[f'{ticker}_share']=0
 
-
-    def _feedinfo(self, date):
-        self.message={'date':date}
-    def _event_process(self, date):
-        '''
-        listen to events: 
-        1. funding signal
-        2. trade signal
-        3. rebalance signal
-        '''
-        #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
-        self._on_funding(date)
-        self._on_rebalance(date)
-        self._on_trade(date)
-        self._on_rolling(date)
-    
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    
@@ -181,6 +188,7 @@ class Minerva:
         if (date in self.trading_dates and self.new_fund):
             self.strategy(self, date)
             self.new_fund=False
+            
     def _on_funding(self, date):
         if date==self.dateseries[0]:
             fund_str=utils.fmt_value(self.init_fund)
