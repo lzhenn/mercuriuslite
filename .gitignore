@@ -4,5 +4,6 @@ build
 *.egg-info
 dist
 sandbox
+data
 test_case/fig
 test_case/output
