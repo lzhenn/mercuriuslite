@@ -41,25 +41,34 @@ class Mercurius:
             copy_cfg(os.path.join(CWD,'config.case.ini'))
         
         self.cfg=cfgparser.read_cfg(os.path.join(CWD,'config.case.ini'))
-    
+        self.ltm_dir=self.cfg['MERCURIUS']['ltm_dir']
+        self.model_path=self.cfg['MERCURIUS']['model_path']
+
         const.init(self.cfg)
+        
         utils.write_log('Mercurius Initiation Done.')
 
     def as_crawler(self):
         from .lib import crawler
-        self.crawler=crawler.Andariel(self.cfg)
+        self.crawler=crawler.Andariel(self)
     
     def as_predictor(self):
         from .model import oculus
-        self.predictor=oculus.Oculus(self.cfg)
+        self.predictor=oculus.Oculus(self)
     
     def as_evaluator(self, predictor):
+        '''single model evaluator'''
         from .eval import iustitia
         self.evaluator=iustitia.Iustitia(predictor, self.cfg)
     
+    def as_referee(self):
+        '''single target strategy referee'''    
+        from .eval import prudentia
+        self.referee=prudentia.Prudentia(self)
+
     def as_trader(self):
         from .strategy import minerva
-        self.trader=minerva.Minerva(self.cfg)
+        self.trader=minerva.Minerva(self)
     
     def _setup_logging(self):
         """

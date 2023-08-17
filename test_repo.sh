@@ -1,3 +1,4 @@
+conda activate mercurius
 #pip uninstall mercuriuslite 
 #rm -rf build dist *egg-info
 python setup.py sdist

@@ -10,8 +10,9 @@ class Oculus:
     '''
     oculus caster: core class, model trainer, predictor
     '''
-    def __init__(self, cfg):
-        self.cfg=cfg
+    def __init__(self, mercurius):
+        self.cfg=mercurius.cfg
+        cfg=self.cfg
         self.model_name=cfg['PREDICTOR']['model_name']
         self.Xfile=cfg['PREDICTOR']['Xfile']         
         self.Yfile=cfg['PREDICTOR']['Yfile']
@@ -29,7 +30,7 @@ class Oculus:
             cfg['PREDICTOR']['train_end_time'])
         
         self.archive_flag=cfg['PREDICTOR'].getboolean('archive_flag')
-        self.archive_dir=cfg['PREDICTOR']['archive_dir']               
+        self.archive_dir=mercurius.model_path  
 
         # Predict       
         self.pred_init_time=utils.parse_intime(

@@ -17,6 +17,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
     port_colors=['blue', 'red', 'purple', 'orange', 'gold']
+
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
         color='red', linewidth=1)
@@ -44,16 +45,18 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     ax[0].set_title('Portfolio Performance')
 
     # ------------plot 1: return rate
+    total_days=(df.index[-1]-df.index[0]).days
     ax[1].plot(df.index, df['fund_change']+1, 
                label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
                color='red', linewidth=1)
-    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,len(df)),vtype="pct")
+    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,total_days),vtype="pct")
     ax[1].plot(df.index, df['baseline_return'], 
                label=f'Baseline ({utils.fmt_value(df.iloc[-1]["baseline_return"]-1,vtype="pct")}|{cagr_str})',
                color='orange', linewidth=1)
-    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['accum_return']-1,len(df)),vtype="pct")
+    twr=df.iloc[-1]["accum_return"]-1
+    cagr_str=utils.fmt_value(mathlib.cagr(twr,total_days),vtype="pct")
     ax[1].plot(df.index, df['accum_return'], 
-               label=f'TWR ({utils.fmt_value(df.iloc[-1]["accum_return"]-1,vtype="pct")}|{cagr_str})', 
+               label=f'TWR ({utils.fmt_value(twr,vtype="pct")}|{cagr_str})', 
                color='blue')
     
     no_risk=df['norisk_total_value']/df['accu_fund']
@@ -98,7 +101,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     plt.xlabel('Date')
 
     # Show the plot
-    plt.show()
+    #plt.show()
     plt.savefig(os.path.join('./fig/', scheme_name+'.png'), 
         bbox_inches='tight', dpi=const.DPI)
 def fast_plot(oculus):
@@ -160,7 +163,7 @@ def fast_plot(oculus):
         ax_histy.hlines(y=0.0, xmin=0, xmax=5, linewidth=1, color='red')
         ax_histy.hlines(y=ybase.mean(), xmin=0, xmax=1, linewidth=2, color='black')       
         
-    plt.show()
+    #plt.show()
     plt.savefig(os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png'), 
         bbox_inches='tight', dpi=const.DPI)
 

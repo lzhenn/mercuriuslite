@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Core Evaluator for models or strategies"""
 
-print_prefix='lib.iustitia>>'
+print_prefix='eval.iustitia>>'
 from ..lib import utils, io, mathlib, const
 from ..model import zoo
 import numpy as np
 
 class Iustitia:
     '''
-    iustitia evaluator: core class, model and strategy evaluator 
+    iustitia evaluator: core class, model evaluator 
     '''
     def __init__(self, oculus, cfg):
         self.cfg=cfg
@@ -58,43 +58,3 @@ class Iustitia:
                 belief=mathlib.bayes_update(belief, winning, Y_test[abs_id]>0)
             print(belief)
             
-    
-def strategy_eval(track):
-    table_dic={}
-    track_start=track.iloc[0]
-    track_end=track.iloc[-1]
-    
-    table_dic['Backtest Start:']=track.index[0].strftime("%Y-%m-%d")
-    table_dic['Backtest End:']=track.index[-1].strftime("%Y-%m-%d")
-    val=(track.index[-1]-track.index[0]).days+1
-    total_days=val
-    table_dic['Total Test Duration']=f'{val} days'
-    
-    val=utils.fmt_value(track_end['accu_fund'])
-    table_dic['Cumulative Funding']=val
-    
-    val=utils.fmt_value(track_end['total_value'])
-    table_dic['Cumulative Value']=val
-    
-    twr=track_end['accum_return']-1
-    val=utils.fmt_value(twr,vtype='pct')
-    table_dic['Time-Weighted Return (TWR)']=val
-    
-    val=utils.fmt_value(track_end['fund_change'],vtype='pct')
-    table_dic['Average Rate of Return (ARR)']=val 
-    
-    cagr=mathlib.cagr(twr,total_days)
-    val=utils.fmt_value(cagr,vtype='pct')
-    table_dic['Compound Annual Growth Rate (CAGR)']=val
-    
-    drawdown=track['drawdown'].max()
-    val=utils.fmt_value(-drawdown,vtype='pct')
-    table_dic['Max Drawdown']=val
-   
-    val=utils.fmt_value(cagr/drawdown,vtype='f')
-    table_dic['MAR']=val
-    
-    val=utils.fmt_value(
-        track_end['norisk_total_value']/track_end['accu_fund']-1,vtype='pct')
-    table_dic['No Risk ARR']=val 
-    return table_dic

@@ -61,6 +61,19 @@ def parse_lead(ytgt):
     trad_day=cal_trade_day(lead_str) 
     return ytgt, trad_day
 
+def init_track(dates, tgts):
+    track=pd.DataFrame(
+        np.zeros(len(dates)), index=dates, columns=['accu_fund'])
+    track['cash']=0.0
+    track['port_value']=0.0
+    track['total_value']=0.0
+    track['norisk_total_value']=0.0
+    track['daily_return']=1.0
+    for ticker in tgts:
+        track[f'{ticker}_value']=0.0
+        track[f'{ticker}_share']=0
+
+    return track
 def cal_trade_day(lead_str):
     for key_wd in ['day','week','mon','qtr','yr']:
         if key_wd in lead_str:

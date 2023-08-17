@@ -8,11 +8,11 @@ from . import utils, io
 print_prefix='lib.crawler>>'
 
 class Andariel:
-    def __init__(self,cfg):
-        self.cfg=cfg
+    def __init__(self, mercurius):
+        self.cfg=mercurius.cfg
         self.tickers=self.cfg['SCRAWLER']['tickers'].replace(' ','').split(',')
         self.archive_dir=self.cfg['SCRAWLER']['archive_dir']
-        self.ltm_dir=self.cfg['SCRAWLER']['ltm_dir']
+        self.ltm_dir=mercurius.ltm_dir
     # ---Classes and Functions---
     def fetch(self, inperiod='1mo'):
         """ Fetch data from yahoo finance """

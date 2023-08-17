@@ -4,8 +4,8 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const, painter, mathlib
-from ..eval import iustitia
+from ..lib import utils, io, const, painter
+from ..eval import prudentia 
 from . import scheme_zoo, indicators
 import datetime
 import numpy as np
@@ -20,8 +20,9 @@ class Minerva:
     '''
     minerva engine: strategy implementation engine
     '''
-    def __init__(self, cfg):
-        self.cfg=cfg
+    def __init__(self, mercurius):
+        self.cfg=mercurius.cfg
+        cfg=self.cfg
         self.scheme_name=cfg['SCHEMER']['scheme_name']
         self.strategy = getattr(scheme_zoo, self.scheme_name)
         self.pos_scheme_name=cfg['SCHEMER']['pos_scheme_name']
@@ -33,9 +34,9 @@ class Minerva:
         self.norisk_scheme_name=cfg['SCHEMER']['norisk_scheme_name']
         self.norisk_scheme = getattr(scheme_zoo, 'norisk_'+self.norisk_scheme_name)
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
-        self.db_path=cfg['SCHEMER']['db_path']
+        self.db_path=mercurius.ltm_dir
         self.baseticker=cfg['SCHEMER']['baseticker']
-        self.model_path=cfg['SCHEMER']['model_path']
+        self.model_path=mercurius.model_path
         self.port_tgts=cfg['SCHEMER']['port_tgts'].replace(' ','').split(',')
        
         self.action_dict={}
@@ -82,12 +83,6 @@ class Minerva:
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
         
-        crossover=indicators.ma_crossover(
-                self.port_hist['TQQQ'], shortlag=21, longlag=126)
-        for idx, date in enumerate(self.port_hist['TQQQ'].index):
-            if not(crossover[idx]==0):
-                print(date,crossover[idx])
-        exit()
     def backtest(self):
         '''
         '''
@@ -109,13 +104,11 @@ class Minerva:
         '''
         utils.write_log(f'{print_prefix}inspect portfolio...')
         track=self.track
-        track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']
+        track=prudentia.track_inspect(track)
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
             inplace=True)
         
-        track['daily_return']=np.log(track['daily_return'])
-        track['accum_return']=np.exp(track['daily_return'].cumsum())
 
         # baseline return
         track['baseline_return']=track['accum_return']
@@ -130,7 +123,7 @@ class Minerva:
         track['baseline_drawdown'] = (
             track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
         
-        eval_table=iustitia.strategy_eval(track)
+        eval_table=prudentia.strategy_eval(track)
         painter.table_print(eval_table) 
         painter.draw_perform_fig(
             track, self.scheme_name, self.port_tgts, eval_table)
@@ -152,18 +145,8 @@ class Minerva:
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
-        self.track = pd.DataFrame(
-            np.zeros(len(date_series)), index=date_series, columns=['accu_fund'])
-        
-        self.track['cash']=0.0
-        self.track['port_value']=0.0
-        self.track['total_value']=0.0
-        self.track['norisk_total_value']=0.0
-        self.track['daily_return']=1.0
-        for ticker in self.port_tgts:
-            self.track[f'{ticker}_value']=0.0
-            self.track[f'{ticker}_share']=0
-
+        self.track = utils.init_track(date_series, self.port_tgts)
+    
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    

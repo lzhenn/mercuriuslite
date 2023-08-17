@@ -11,14 +11,16 @@ def new_high_defense(hist, date):
         defense=0.5*const.CASH_IN_HAND
     return defense
 
-def ma_crossover(hist, tgt='Close', shortlag=9, longlag=21):
+def ma_crossover(hist, para_lst):
     '''
     calculate MA crossover
     returns: -1: downward, 0, no signal, 1: upward
     '''
-    ts=hist[tgt]
+    tgt_price,shortlag,longlag=para_lst[0],int(para_lst[1]),int(para_lst[2])
+    ts=hist[tgt_price]
     ma_short=mathlib.ma(ts, shortlag)
     ma_long=mathlib.ma(ts, longlag)
     diff=ma_short-ma_long
-    signal=np.sign(np.diff(np.sign(diff)))
+    signal=np.sign(np.diff(np.sign(diff), prepend=0.0))
+    # signal is a vector of -1, 0, 1
     return signal

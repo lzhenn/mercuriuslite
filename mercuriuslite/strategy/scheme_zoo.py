@@ -21,11 +21,6 @@
 #       norisk_fixed
 #       norisk_dynamic
 #
-#   --other
-#       new_high_defense: calculate defensive portion 
-#           if target reached new high
-#       ma_crossover: calculate MA crossover
-#
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
 import numpy as np
@@ -53,11 +48,16 @@ def pos_prescribe(minerva, date):
     tgts=minerva.port_tgts
     portions=minerva.cfg['S_prescribe']['pos_portion'].replace(' ','').split(',')
     
-    portions=[float(port) for port in portions]
+    cash_portion=minerva.cash_scheme(minerva, date)
+    pos_dic['cash']=cash_portion 
+    portions=[float(port) for port in portions][0:len(tgts)]
     portions=np.asarray(portions)
     portions=portions/portions.sum()
+    
+    sum_tgt=portions.sum()
+    # normalize
     for tgt,portion in zip(tgts,portions):
-        pos_dic[tgt]=portion
+        pos_dic[tgt]=(portion/sum_tgt)*(1-cash_portion)
     return pos_dic
 
 def pos_seesaw(minerva, date):
@@ -65,7 +65,7 @@ def pos_seesaw(minerva, date):
     tgts=minerva.port_tgts
     hist=minerva.basehist
     portions=minerva.cfg['S_seesaw']['pos_portion'].replace(' ','').split(',')
-    portions=[float(port) for port in portions]
+    portions=[float(port) for port in portions][0:len(tgts)]
     portions=np.asarray(portions)
     portions=portions/portions.sum()
     
@@ -85,11 +85,11 @@ def pos_seesaw(minerva, date):
         elif tgt =='SPXL':
             pos_dic[tgt]=min(max(portion+drawdown-defense,0.00),0.35)
         elif tgt =='TQQQ':
-            pos_dic[tgt]=min(max(portion+drawdown-0.05-defense,0.00),0.25)
+            pos_dic[tgt]=portion
         else:
             pos_dic[tgt]=portion
         sum_tgt+=pos_dic[tgt]
-    # normalize
+    # normalize ticker's portion
     for tgt,portion in zip(tgts,portions):
         pos_dic[tgt]=(pos_dic[tgt]/sum_tgt)*(1-cash_portion)
     #print(f'drawdown: {drawdown}')
