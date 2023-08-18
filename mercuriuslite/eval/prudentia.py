@@ -14,9 +14,15 @@ class Prudentia:
         self.strategy_name=self.cfg['EVALUATOR']['strategy_name']
         self.strategy=getattr(indicators, self.strategy_name)
         self.tickers=self.cfg['EVALUATOR']['tickers'].replace(' ','').split(',')
+        
+        portions=self.cfg['EVALUATOR']['portions'].replace(' ','').split(',')
+        portions=[float(port) for port in portions][0:len(self.tickers)]
+        portions=np.asarray(portions)
+        self.portions=portions/portions.sum()
+        
         self.ltm_dir=mercurius.ltm_dir
         self.baseticker=self.cfg['EVALUATOR']['baseticker']
-        self.paras=self.cfg['EVALUATOR']['paras'].replace(' ','').split(',')
+        self.paras=self.cfg['EVALUATOR']['paras'].replace(' ','').split('/')
         self._load_hist()
         self._init_portfolio()
 
@@ -35,9 +41,25 @@ class Prudentia:
  
     def judge(self):
         track=self.track
-        for tgt in self.tickers:
-            track['action']=self.strategy(self.hist[tgt], self.paras)
-            track=vector_eval(track,self.hist[tgt],tgt)    
+        
+        accu_fund=10000
+        
+        track['accu_fund']=accu_fund*np.ones(len(track))
+        track['norisk_total_value']=track['accu_fund']
+        for idx,tgt in enumerate(self.tickers):
+            track['action']=self.strategy(
+                self.hist[tgt].loc[track.index], self.paras[idx].replace(' ','').split(','))
+            cash2use=accu_fund*self.portions[idx]
+            track=vector_eval(track,self.hist[tgt],tgt,cash2use=cash2use)    
+        track['total_value']=track['cash']+track['port_value']
+        dr_vec=1+np.diff(
+            track['total_value'].values,prepend=accu_fund)/np.concatenate(([accu_fund],track['total_value'].values[:-1]))
+        track['daily_return']=dr_vec
+        track['drawdown'] = (
+            track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
+        track=track_inspect(track)
+    
+        
         track=baseline_inspect(track,self.basehist) 
         eval_table=strategy_eval(track)
         painter.table_print(eval_table) 
@@ -45,20 +67,18 @@ class Prudentia:
             track, self.strategy_name, self.tickers, eval_table)
     
 
-def vector_eval(track, hist,tgt, price_tgt='Close', accu_fund=10000):
-    len_vec=len(hist)
+def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):
+    len_vec=len(track)
+    hist=hist.loc[track.index]
     # all in numpy!
-    price_vec=hist['Close'].values
+    price_vec=hist[price_tgt].values
     value_vec,share_vec,cash_vec=np.zeros(len_vec), np.zeros(len_vec), np.zeros(len_vec)
-    pos_vec=np.zeros(len_vec)
-    accu_fund_vec=accu_fund*np.ones(len_vec)
+    cash_vec[0]=cash2use
     act_vec=track['action'].values
-    cash_vec[0]=accu_fund
-    
     if act_vec[0]==1:
-            share_vec[idx]+=cash_vec[idx]/price_vec[idx]
-            value_vec[idx]=cash_vec[idx]
-            cash_vec[idx]=0
+            share_vec[0]+=cash2use/price_vec[0]
+            value_vec[0]=cash2use
+            cash_vec[0]=0
     for idx in np.arange(1, len_vec):
         if act_vec[idx]==0:
             share_vec[idx]=share_vec[idx-1]
@@ -68,26 +88,17 @@ def vector_eval(track, hist,tgt, price_tgt='Close', accu_fund=10000):
             share_vec[idx]+=cash_vec[idx-1]/price_vec[idx]
             value_vec[idx]=cash_vec[idx-1]
             cash_vec[idx]=0
-        elif value_vec[idx-1]>0:
+        elif act_vec[idx]==-1 and value_vec[idx-1]>0:
             share_vec[idx]=0
             value_vec[idx]=0
-            cash_vec[idx]=value_vec[idx-1]
+            cash_vec[idx]=cash_vec[idx-1]+value_vec[idx-1]
+            cash2use=value_vec[idx-1]
         else:
             cash_vec[idx]=cash_vec[idx-1]
     track[tgt+'_value']=value_vec
     track[tgt+'_share']=share_vec
-    track['cash']=cash_vec
-    track['accu_fund']=accu_fund_vec
-    track['port_value']=value_vec
-    track['total_value']=value_vec+cash_vec
-    track['norisk_total_value']=accu_fund_vec
-
-    dr_vec=1+np.diff(
-        track['total_value'].values,prepend=accu_fund)/np.concatenate(([accu_fund],track['total_value'].values[:-1]))
-    track['daily_return']=dr_vec
-    track['drawdown'] = (
-        track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
-    track=track_inspect(track)
+    track['cash']+=cash_vec
+    track['port_value']+=value_vec
     return track
 
 def track_inspect(track):
@@ -95,6 +106,7 @@ def track_inspect(track):
     track['daily_return']=np.log(track['daily_return'])
     track['accum_return']=np.exp(track['daily_return'].cumsum())
     return track
+
 def baseline_inspect(track, basehist):
     basehist=basehist['Close']
     # baseline return

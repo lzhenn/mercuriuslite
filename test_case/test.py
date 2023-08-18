@@ -4,6 +4,7 @@ mercuriuslite.copy_cfg('config.case.ini')
 agent=mercuriuslite.Mercurius()
 
 #agent.as_crawler()
+#agent.crawler.fetch()
 #agent.crawler.fetch(inperiod='max')
 #agent.crawler.persist()
 
