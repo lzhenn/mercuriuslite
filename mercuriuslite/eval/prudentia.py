@@ -23,6 +23,14 @@ class Prudentia:
         self.ltm_dir=mercurius.ltm_dir
         self.baseticker=self.cfg['EVALUATOR']['baseticker']
         self.paras=self.cfg['EVALUATOR']['paras'].replace(' ','').split('/')
+        
+        self.eval_start_time=utils.parse_intime(
+            self.cfg['EVALUATOR']['eval_start_time'])     
+        self.eval_end_time=utils.parse_intime(
+            self.cfg['EVALUATOR']['eval_end_time'])
+    
+
+        
         self._load_hist()
         self._init_portfolio()
 
@@ -31,9 +39,18 @@ class Prudentia:
         for tgt in self.tickers:
             utils.write_log(f'{print_prefix}load {tgt}')
             self.hist[tgt]=io.load_hist(self.ltm_dir, tgt)
-        self.dateseries=self.hist[self.tickers[0]].index
-        self.basehist=io.load_hist(self.ltm_dir, self.baseticker)
-    
+            
+        dateseries=self.hist[self.tickers[0]].index
+        if self.eval_start_time == '0':
+            idx_start=0
+        else:
+            idx_start=dateseries.searchsorted(self.eval_start_time)
+        if self.eval_end_time == '0':
+            idx_end=dateseries.shape[0]
+        else:
+            idx_end=dateseries.searchsorted(self.eval_end_time) 
+        self.dateseries=dateseries[idx_start:idx_end]
+        self.basehist=io.load_hist(self.ltm_dir, self.baseticker) 
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
@@ -47,8 +64,9 @@ class Prudentia:
         track['accu_fund']=accu_fund*np.ones(len(track))
         track['norisk_total_value']=track['accu_fund']
         for idx,tgt in enumerate(self.tickers):
+            idx_start=self.hist[tgt].index.searchsorted(track.index[0])
             track['action']=self.strategy(
-                self.hist[tgt].loc[track.index], self.paras[idx].replace(' ','').split(','))
+                self.hist[tgt], self.paras[idx].replace(' ','').split(','),idx_start)
             cash2use=accu_fund*self.portions[idx]
             track=vector_eval(track,self.hist[tgt],tgt,cash2use=cash2use)    
         track['total_value']=track['cash']+track['port_value']
@@ -64,7 +82,7 @@ class Prudentia:
         eval_table=strategy_eval(track)
         painter.table_print(eval_table) 
         painter.draw_perform_fig(
-            track, self.strategy_name, self.tickers, eval_table)
+            track, self.strategy_name+'.vecbck', self.tickers, eval_table)
     
 
 def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):
@@ -99,6 +117,7 @@ def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):
     track[tgt+'_share']=share_vec
     track['cash']+=cash_vec
     track['port_value']+=value_vec
+    print(track.loc[(track['action']==1 )| (track['action']==-1)])
     return track
 
 def track_inspect(track):

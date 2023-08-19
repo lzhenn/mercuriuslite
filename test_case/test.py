@@ -16,8 +16,8 @@ agent=mercuriuslite.Mercurius()
 #agent.evaluator.bayes_test()
 #agent.predictor.fast_plot()
 
-agent.as_referee()
-agent.referee.judge()
+#agent.as_referee()
+#agent.referee.judge()
 
-#agent.as_trader()
-#agent.trader.backtest()
+agent.as_trader()
+agent.trader.backtest()

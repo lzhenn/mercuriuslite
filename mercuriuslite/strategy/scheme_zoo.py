@@ -24,6 +24,7 @@
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
 import numpy as np
+import pandas as pd
 from ..lib import const, utils, mathlib, io
 from . import indicators
 import datetime
@@ -42,6 +43,37 @@ def buy_and_hold(minerva, date):
         for tgt in minerva.port_tgts:
             minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
         minerva.trade(date)
+
+# ------------------------MA_CROSS------------------------
+def ma_cross_init(minerva, date):
+    minerva.paras=minerva.cfg['S_ma_cross']['paras'].replace(' ','').split('/')
+    minerva.price_type=minerva.cfg['S_ma_cross']['trade_price_type']
+    port_dic=minerva.pos_scheme(minerva, date)
+    minerva.ticker_assets={}
+    minerva.ma_cross={}
+    for idx, tgt in enumerate(minerva.port_tgts):
+        idx_start=minerva.port_hist[tgt].index.searchsorted(date)
+        ma_cross=indicators.ma_crossover(
+            minerva.port_hist[tgt], minerva.paras[idx].replace(' ','').split(','), 
+            trunc_idx=idx_start)
+        minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.act_fund
+        ma_cross=pd.DataFrame(ma_cross, index=minerva.trading_dates, columns=['signal'])
+        minerva.ma_cross[tgt]=ma_cross
+def ma_cross(minerva, date):
+    # current track rec
+    curr_rec=minerva.track.loc[date]
+    price_tpye=minerva.price_type
+    #cash_portion=cash_fixed(minerva, date)
+    #port_flag=[curr_rec[f'{tgt}_share']>0 for tgt in minerva.port_tgts]
+    for tgt in minerva.port_tgts:
+        curr_hist=minerva.port_hist[tgt].loc[date]
+        signal=minerva.ma_cross[tgt].loc[date].values[0]
+        if signal == -1:
+            minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
+        minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
+    minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye)
+   
+
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
     pos_dic={}

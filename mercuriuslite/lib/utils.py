@@ -83,6 +83,8 @@ def cal_trade_day(lead_str):
     throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
 
 def gen_date_intervals(dateseries, interval):
+    if interval=='none':
+        return []
     try:
         dates=pd.date_range(start=dateseries[1], end=dateseries[-1], freq=interval)
         return dates.to_list()
@@ -119,9 +121,22 @@ def cal_days_since_mjdown(date, drawdown, thresh=0.05):
     while (date_pos in dates) and (drawdown[date_pos]<thresh):
         date_pos=dates[dates.get_loc(date_pos)-1]
     return (date-date_pos).days
-# ---Unit test---
-if __name__ == '__main__':
-    pass
+
+
+def determ_price(price_rec, price_type):
+    if price_type in ['High', 'Low', 'Close', 'Open']:
+        price=price_rec[price_type]
+    elif price_type=='Mid':
+        price=(price_rec['High']+price_rec['Low'])/2
+    elif price_type=='MidOC':
+        price=(price_rec['Open']+price_rec['Close'])/2
+    elif price_type=='Avg':
+        price=(price_rec['Open']+price_rec['Close']+price_rec['High']+price_rec['Low'])/4
+    elif price_type=='NearOpen':
+        price=price_rec['Open']*0.8+price_rec['High']*0.1+price_rec['Low']*0.1
+    elif price_type=='Random':
+        price=np.random.uniform(low=price_rec['Low'],high=price_rec['High'])
+    return price
 
 def fmt_value(val, vtype='usd', dec=2):
     # vtype='usd','pct'
@@ -136,3 +151,6 @@ def fmt_value(val, vtype='usd', dec=2):
         fmt_val=f'{val:.2f}'
         
     return fmt_val 
+# ---Unit test---
+if __name__ == '__main__':
+    pass

@@ -6,7 +6,7 @@ print_prefix='strategy.minerva>>'
 # ---imports---
 from ..lib import utils, io, const, painter
 from ..eval import prudentia 
-from . import scheme_zoo, indicators
+from . import scheme_zoo 
 import datetime
 import numpy as np
 import pandas as pd
@@ -44,7 +44,6 @@ class Minerva:
             self.action_dict[tgt]=0.0
 
         self.model_names=cfg['SCHEMER']['port_models'].replace(' ','').split(',')
-        self._load_portfolio()
 
         if cfg['SCHEMER'].getboolean('backtest_flag'):
             self.backtest_start_time=utils.parse_intime(
@@ -56,6 +55,8 @@ class Minerva:
             self.dateseries=pd.date_range(
                 start=self.backtest_start_time,
                 end=self.backtest_end_time)
+        
+        self._load_portfolio()
         
         # cash flow        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
@@ -76,9 +77,11 @@ class Minerva:
         for tgt, model_name in zip(self.port_tgts,self.model_names):
             utils.write_log(f'{print_prefix}load {tgt}')
             self.port_hist[tgt]=io.load_hist(self.db_path, tgt)
-            self.port_model[tgt], self.port_meta[tgt]=io.load_model(
-                self.model_path, model_name, tgt, baseline=False)
-        self.trading_dates=self.port_hist[self.port_tgts[0]].index
+            #self.port_model[tgt], self.port_meta[tgt]=io.load_model(
+            #    self.model_path, model_name, tgt, baseline=False)
+        trading_dates=self.port_hist[self.port_tgts[0]].index
+        idx_start=trading_dates.searchsorted(self.backtest_start_time)
+        self.trading_dates=trading_dates[idx_start:]
         self.basehist=io.load_hist(self.db_path, self.baseticker)
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
@@ -88,12 +91,16 @@ class Minerva:
         '''
         start_day=self.backtest_start_time
         end_day=self.backtest_end_time
+        
         utils.write_log(
             f'{print_prefix}{const.HLINE}BACKTESTING: {start_day.strftime("%Y-%m-%d")} START{const.HLINE}')
         self._init_portfolio()
-        # backtrace
-        for date in self.dateseries:
+        
+        # -----------------backtrace-------------------
+        for idx in range(len(self.dateseries)):
+            date=self.dateseries[idx]
             self._event_process(date)
+        
         utils.write_log(
             f'{print_prefix}{const.HLINE}BACKTESTING: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
         self.inspect()
@@ -127,7 +134,7 @@ class Minerva:
         painter.table_print(eval_table) 
         painter.draw_perform_fig(
             track, self.scheme_name, self.port_tgts, eval_table)
-    
+        print(track.iloc[-1])
     def _event_process(self, date):
         '''
         listen to events: 
@@ -168,7 +175,8 @@ class Minerva:
             self.new_fund=False
                 
     def _on_trade(self, date):
-        if (date in self.trading_dates and self.new_fund):
+        if (date in self.trading_dates):
+        #if (date in self.trading_dates and self.new_fund):
             self.strategy(self, date)
             self.new_fund=False
             
@@ -182,8 +190,11 @@ class Minerva:
             self.track.loc[date, 'total_value']=self.init_fund
             self.track.loc[date, 'accu_fund']=self.init_fund
             self.new_fund=True
+            # new funding 
             self.act_fund=self.init_fund
             self.NRDR=self.norisk_scheme(self,date)
+            # init scheme
+            getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(
                 self, date)
@@ -191,6 +202,7 @@ class Minerva:
             self.track.loc[date,'total_value']+=act_flow
             self.track.loc[date,'accu_fund']+=act_flow
             self.new_fund=True
+            # new funding
             self.act_fund=act_flow
             utils.write_log(
                 f'{print_prefix}Funding signal captured, current fund:'+\
@@ -245,7 +257,7 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def trade(self,date, call_from='DCA'):
+    def trade(self,date, call_from='DCA', price_type='Mid'):
         '''
         determine exact position change, for input
         action_dict= 
@@ -261,7 +273,7 @@ class Minerva:
         for act_tgt in act_tgt_lst:
             tgt,val=act_tgt[0],act_tgt[1]
             price_rec=self.port_hist[tgt].loc[date]
-            trade_price=(price_rec['High']+price_rec['Low'])/2
+            trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
             if not(share==0):
                 utils.write_log(

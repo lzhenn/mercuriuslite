@@ -8,7 +8,7 @@ MercuriusLite is a lightweight version of my previous project [mercurius](https:
 
 ## Class Naming
 * _[Mercurius](https://en.wikipedia.org/wiki/Mercury_(mythology))_: Central controller, name comes from major god in Roman religion and mythology, the god of financial gain.
-* _[Andariel](http://classic.battle.net/diablo2exp/monsters/act1-andariel.shtml): Crawler controller, name comes from the Act Boss of the first act of Diablo II.
+* _[Andariel](http://classic.battle.net/diablo2exp/monsters/act1-andariel.shtml)_: Crawler controller, name comes from the Act Boss of the first act of Diablo II.
 * _[Oculus](http://classic.battle.net/diablo2exp/items/normal/usorceress.shtml)_: Prediction model controler, name comes from the unique item specifically for Sorceress in Diablo II.
 * _[Iustitia](https://en.wikipedia.org/wiki/Lady_Justice)_: Model evaluator, name comes from personification of Justice in Ancient Roman art known as Iustitia or Justitia.
 * _[Prudentia](https://en.wikipedia.org/wiki/Prudence)_: Strategy evaluator, an allegorical female personification of the virtue, whose attributes are a mirror and snake, who is frequently depicted as a pair with Justitia, the Roman goddess of Justice. 

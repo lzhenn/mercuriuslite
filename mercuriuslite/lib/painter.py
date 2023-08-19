@@ -16,7 +16,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
-    port_colors=['blue', 'red', 'purple', 'orange', 'gold']
+    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold']
 
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
@@ -30,13 +30,13 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
  
     ax[0].fill_between(
         df.index, df['cash'], 0, 
-        color='green', alpha=0.3, 
+        color='green', alpha=0.5, 
         label=f'Cash ({utils.fmt_value(df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct")})')
     df_accu=df['cash']
     for idx,tgt in enumerate(tgts):
         ax[0].fill_between(
             df.index, df[tgt+'_value']+df_accu, df_accu,
-            color=port_colors[idx], alpha=0.3,
+            color=port_colors[idx], alpha=0.5,
             label=f'{tgt} ({utils.fmt_value(df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct")})')
         df_accu=df_accu+df[tgt+'_value']
     #ax[0].set_yscale('log')
