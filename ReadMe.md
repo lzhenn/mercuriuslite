@@ -7,6 +7,7 @@ It provides some objective guidance for Dollar-Cost Averaging (DCA) strategy for
 MercuriusLite is a lightweight version of my previous project [mercurius](https://github.com/lzhenn/mercurius), of which the development was discontinued.
 
 ## Class Naming
+
 * _[Mercurius](https://en.wikipedia.org/wiki/Mercury_(mythology))_: Central controller, name comes from major god in Roman religion and mythology, the god of financial gain.
 * _[Andariel](http://classic.battle.net/diablo2exp/monsters/act1-andariel.shtml)_: Crawler controller, name comes from the Act Boss of the first act of Diablo II.
 * _[Oculus](http://classic.battle.net/diablo2exp/items/normal/usorceress.shtml)_: Prediction model controler, name comes from the unique item specifically for Sorceress in Diablo II.
