@@ -1,4 +1,4 @@
-#/usr/bin/env python3
+#!/usr/bin/env python3
 """strategy zoo"""
 
 # ****************Available strategies*****************
@@ -31,6 +31,8 @@ import datetime
 
 # ------------------------Buy and Hold------------------------
 
+def buy_and_hold_init(minerva, date):
+    pass
 def buy_and_hold(minerva, date):
     ''' buy and hold strategy'''
     port_rec=minerva.track.loc[date]
@@ -44,6 +46,8 @@ def buy_and_hold(minerva, date):
             minerva.action_dict[tgt]=cash_to_use*port_dic[tgt]
         minerva.trade(date)
 
+def buy_and_hold_rebalance(minerva, date):
+    return minerva.action_dict
 # ------------------------MA_CROSS------------------------
 def ma_cross_init(minerva, date):
     minerva.paras=minerva.cfg['S_ma_cross']['paras'].replace(' ','').split('/')
@@ -63,17 +67,40 @@ def ma_cross(minerva, date):
     # current track rec
     curr_rec=minerva.track.loc[date]
     price_tpye=minerva.price_type
-    #cash_portion=cash_fixed(minerva, date)
-    #port_flag=[curr_rec[f'{tgt}_share']>0 for tgt in minerva.port_tgts]
+        
     for tgt in minerva.port_tgts:
         curr_hist=minerva.port_hist[tgt].loc[date]
         signal=minerva.ma_cross[tgt].loc[date].values[0]
         if signal == -1:
             minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
         minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
+    
+    if minerva.new_fund:
+        port_flag=[
+            (curr_rec[f'{tgt}_share']>0) and (
+                minerva.ma_cross[tgt].loc[date].values[0]>=0) for tgt in minerva.port_tgts]
+        nexpose=sum(port_flag) 
+        if nexpose > 0:
+            for idx,tgt in enumerate(minerva.port_tgts):
+                if port_flag[idx]:
+                    minerva.action_dict[tgt]+=minerva.act_fund/nexpose
+        minerva.trade(date, call_from='DCA',price_type=price_tpye)
+        return
     minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye)
    
-
+def ma_cross_rebalance(minerva, date):
+    port_dic=minerva.pos_scheme(minerva, date)
+    curr_rec=minerva.track.loc[date]
+    action_dict = minerva.action_dict
+    total_value=curr_rec['total_value']
+    for tgt in minerva.port_tgts:
+        curr_hist=minerva.port_hist[tgt].loc[date]
+        minerva.ticker_assets[tgt]=total_value*port_dic[tgt]
+        if curr_rec[f'{tgt}_share']>0:
+            action_dict[tgt]=total_value*port_dic[tgt]-curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, 'Open')
+        else:
+            action_dict[tgt]=0
+    return action_dict
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
     pos_dic={}

@@ -64,6 +64,7 @@ def parse_lead(ytgt):
 def init_track(dates, tgts):
     track=pd.DataFrame(
         np.zeros(len(dates)), index=dates, columns=['accu_fund'])
+    track.index.name='Date'
     track['cash']=0.0
     track['port_value']=0.0
     track['total_value']=0.0

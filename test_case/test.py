@@ -20,4 +20,5 @@ agent=mercuriuslite.Mercurius()
 #agent.referee.judge()
 
 agent.as_trader()
+#agent.trader.realtime_trade()
 agent.trader.backtest()

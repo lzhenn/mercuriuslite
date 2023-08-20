@@ -115,12 +115,11 @@ class Minerva:
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
             inplace=True)
-        
+       
 
         # baseline return
         track['baseline_return']=track['accum_return']
         idx_start=self.basehist.index.searchsorted(self.backtest_start_time)
-        idx_end=self.basehist.index.searchsorted(self.backtest_end_time)
         base_value=self.basehist.iloc[idx_start]['Close']
         mkt_value=base_value       
         for date in self.dateseries:
@@ -157,14 +156,15 @@ class Minerva:
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    
-                utils.write_log(f'{print_prefix}Rebalance signal captured.')
+                utils.write_log(f'{print_prefix}Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
                 port_dic=self.pos_scheme(self, date)
                 track_rec=self.track.loc[date]
                 total_value=track_rec['total_value']
-                cash_portion=track_rec["cash"]/track_rec["total_value"]
                 for tgt in self.port_tgts:
                     value=track_rec[f'{tgt}_value']
                     self.action_dict[tgt]=total_value*port_dic[tgt]-value
+                # adjust by specific scheme
+                self.action_dict=getattr(scheme_zoo, self.scheme_name+'_rebalance')(self, date)
                 self.trade(date,call_from='Rebalance')
                 print_dic = {k: round(v, 2) for k, v in port_dic.items()}
                 utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic}')
@@ -257,7 +257,7 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def trade(self,date, call_from='DCA', price_type='Mid'):
+    def trade(self,date, call_from='DCA', price_type='NearOpen'):
         '''
         determine exact position change, for input
         action_dict= 
@@ -288,7 +288,7 @@ class Minerva:
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
     def risk_manage(self,date):
         pass     
-    def realtime():
+    def realtime_trade():
         pass
 
 

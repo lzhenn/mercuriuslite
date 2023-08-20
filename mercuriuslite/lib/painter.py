@@ -1,5 +1,6 @@
 from . import const, utils, mathlib
 import matplotlib, os, datetime
+import pandas as pd
 import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -20,23 +21,23 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
 
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
-        color='red', linewidth=1)
+        color='black', linewidth=1)
     ax[0].plot(df.index, df['norisk_total_value'], 
         label=f'NoRiskV: {utils.fmt_value(df.iloc[-1]["norisk_total_value"])}', 
-        color='green', linewidth=1)
+        color='green', linewidth=1.5)
     ax[0].plot(df.index, df['total_value'], 
         label=f'NAV: {utils.fmt_value(df.iloc[-1]["total_value"])}', 
         color='blue')
  
     ax[0].fill_between(
         df.index, df['cash'], 0, 
-        color='green', alpha=0.5, 
+        color='green', alpha=0.4, 
         label=f'Cash ({utils.fmt_value(df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct")})')
     df_accu=df['cash']
     for idx,tgt in enumerate(tgts):
         ax[0].fill_between(
             df.index, df[tgt+'_value']+df_accu, df_accu,
-            color=port_colors[idx], alpha=0.5,
+            color=port_colors[idx], alpha=0.4,
             label=f'{tgt} ({utils.fmt_value(df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct")})')
         df_accu=df_accu+df[tgt+'_value']
     #ax[0].set_yscale('log')
@@ -62,12 +63,32 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     no_risk=df['norisk_total_value']/df['accu_fund']
     ax[1].plot(df.index, no_risk, 
                label=f'NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
-               color='green', linewidth=1)
+               color='green', linewidth=1.5)
     
-    ax[1].hlines(y=1.0, xmin=df.index[0], xmax=df.index[-1], 
-            linewidth=1, color='grey', linestyles='--')
-    ax[1].set_ylabel('Return Rate')
+    ax[1].axhline(y=1.0, linewidth=1, color='grey', linestyle='--')
+    ax[1].tick_params(axis='y', labelcolor='blue')
+    ax[1].set_ylabel('Accumulated Return', color='blue')
     ax[1].legend(loc='upper left',fontsize=const.SM_SIZE)
+
+    # Create a twin axes on the right for the monthly bar chart
+    ax_bar = ax[1].twinx()
+    pct_dr=np.exp(df['daily_return'])
+    # Resample the data to monthly and plot the bar chart on the right y-axis
+    mon_return=pct_dr.resample('M').apply(lambda x: x.prod() - 1)
+    width=20
+    colors = ['green' if x > 0 else 'red' for x in mon_return]
+    ax_bar.bar(
+        mon_return.index- pd.offsets.MonthBegin(1) + pd.Timedelta(width/2, 'D'), mon_return, 
+        width=width, color=colors, alpha=0.3, label='Monthly Return')
+    ax_bar.set_ylabel('Monthly Return', color='red')
+    ax_bar.tick_params(axis='y', labelcolor='red')
+    
+    hlines=[(0.1,'green',0.5,'--'),(0.05,'green',0.5,':'),
+            (0,'grey',1,'--'),(-0.05,'red',0.5,':'),
+            (-0.1,'red',0.5,'--')]
+    for hline in hlines:
+        ax_bar.axhline(
+            y=hline[0], color=hline[1], linewidth=hline[2], linestyle=hline[3])
 
     # ------------plot 2: maximum drawdown
     ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', linewidth=1, 
@@ -80,23 +101,77 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
     ax[2].fill_between(
         df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
     
-    hlines=[(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
+    hlines=[(0.0,'black',1,'-'),(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
             (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
             (-0.25,'orange',1,'--'),(-0.3,'red',1,'--')]
     for hline in hlines:
         if abs(hline[0])<df['baseline_drawdown'].max():
-            ax[2].hlines(y=hline[0], xmin=df.index[0], xmax=df.index[-1], 
-                linewidth=hline[2], color=hline[1], linestyles=hline[3])
+            ax[2].axhline(y=hline[0], color=hline[1], linewidth=hline[2], 
+                          linestyle=hline[3])
    
     
     ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
     ax[2].set_ylabel('Drawdown')
 
-    # ------------plot 3: funding pulse
-    fund_pulse=df['accu_fund'].diff()
-    ax[3].plot(df.index, fund_pulse, color='red', linewidth=1)
-    ax[3].set_ylabel('Cash Flow')
+     # calculate periods when all values are larger than 0
+    df['drawperiod'] = (df['drawdown'] > 0)
+    df['group'] = (df['drawperiod'] != df['drawperiod'].shift()).cumsum()
+    df['period'] = df.groupby('group')['drawperiod'].transform('cumsum')
+    df['period'] = df['period'].diff(periods=-1)
+    longest_periods = df.sort_values('period', ascending=False).head(5)['group'].unique()
+    df['period_mark'] = df['group'].apply(
+        lambda x: df.loc[df['group'] == x, 'period'].iloc[0] if x in longest_periods else 0)
+    for period in longest_periods:
+        start_date = df.loc[df['group'] == period].index[0]
+        end_date = df.loc[df['group'] == period].index[-1]
+        ax[2].axvspan(start_date, end_date, alpha=0.3, color='grey')
+        x,y=start_date,-df['drawdown'].loc[start_date:end_date].max()
+        ax[2].text(x, y-0.05, 
+            f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
+            ha='left', va='bottom', fontsize=const.SM_SIZE,
+            weight='bold')
+    #ax_drawperiod=ax[2].twinx()
+    #ax_drawperiod.plot(df.index, df['period'], color='green', linewidth=1)
 
+
+    # ------------plot 3: funding pulse
+    #fund_pulse=df['accu_fund'].diff()
+    #ax[3].plot(df.index, fund_pulse, color='red', linewidth=1,alpha=0.7)
+    #ax[3].set_ylabel('Cash Flow')
+    
+    # calculate cumulative sum of log daily return
+    cumy_return = np.exp(df['daily_return'].groupby(df.index.year).cumsum())-1
+    cumy_return.loc[(df.index.month == 1) & (df.index.day == 1)] = np.nan
+    #cum_log_return = cum_log_return.groupby(cum_log_return.index.year).apply(lambda x: pd.Series(x).cumsum())
+    #cum_log_return.index = cum_log_return.index.map(lambda x: pd.date_range(start=x.date(), periods=len(x), freq='D'))
+    ax[3].plot(
+        cumy_return.index, cumy_return, color='blue', linewidth=1, alpha=0.5)
+    ax[3].set_ylabel('Yearly Cumulative Return')
+
+    ax_bar2=ax[3].twinx()
+    # Resample the data to monthly and plot the bar chart on the right y-axis
+    yr_return=pct_dr.resample('Y').apply(lambda x: x.prod() - 1)
+    width=365
+    colors = ['green' if x > 0 else 'red' for x in yr_return]
+    bars=ax_bar2.bar(
+        yr_return.index- pd.offsets.YearBegin(1) + pd.Timedelta(width/2, 'D'), yr_return, 
+        width=width, color=colors, alpha=0.4, label='Yearly Return',
+        edgecolor='black', linewidth=1)
+    hlines=[(0.5,'green',0.5,'--'),(0.25,'green',0.5,':'),
+            (0,'grey',1,'--'),(-0.1,'red',0.5,':'),
+            (-0.2,'red',0.5,'--'),(-0.3,'red',1.0,'--')]
+    for hline in hlines:
+        ax_bar2.axhline(
+            y=hline[0], color=hline[1], linewidth=hline[2], linestyle=hline[3])
+    ax_bar2.set_ylim(ax[3].get_ylim()) 
+
+    # add value on top of each bar
+    for bar in bars:
+        x = bar.get_x() + bar.get_width() / 2
+        y = bar.get_height()
+        ax_bar2.text(x, y, utils.fmt_value(y,vtype="pct"), 
+            ha='center', va='bottom', fontsize=const.SM_SIZE,
+            weight='bold')
     # Set the x-axis label and title
     plt.xlabel('Date')
 

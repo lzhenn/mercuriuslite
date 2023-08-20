@@ -170,7 +170,8 @@ def strategy_eval(track):
    
     val=utils.fmt_value(cagr/drawdown,vtype='f')
     table_dic['MAR']=val
-    
+
+   
     val=utils.fmt_value(
         track_end['norisk_total_value']/track_end['accu_fund']-1,vtype='pct')
     table_dic['No Risk ARR']=val 
