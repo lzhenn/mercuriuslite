@@ -55,26 +55,28 @@ def ma_cross_init(minerva, date):
     port_dic=minerva.pos_scheme(minerva, date)
     minerva.ticker_assets={}
     minerva.ma_cross={}
+    trading_dates=minerva.trading_dates
+    # pseudo date for realtime trading
+    trading_dates_ext=trading_dates.append(
+        pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
     for idx, tgt in enumerate(minerva.port_tgts):
         idx_start=minerva.port_hist[tgt].index.searchsorted(date)
         ma_cross=indicators.ma_crossover(
             minerva.port_hist[tgt], minerva.paras[idx].replace(' ','').split(','), 
             trunc_idx=idx_start)
         minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.act_fund
-        ma_cross=pd.DataFrame(ma_cross, index=minerva.trading_dates, columns=['signal'])
+        ma_cross=pd.DataFrame(ma_cross, index=trading_dates_ext, columns=['signal'])
         minerva.ma_cross[tgt]=ma_cross
 def ma_cross(minerva, date):
     # current track rec
     curr_rec=minerva.track.loc[date]
     price_tpye=minerva.price_type
-        
     for tgt in minerva.port_tgts:
         curr_hist=minerva.port_hist[tgt].loc[date]
         signal=minerva.ma_cross[tgt].loc[date].values[0]
         if signal == -1:
             minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
         minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
-    
     if minerva.new_fund:
         port_flag=[
             (curr_rec[f'{tgt}_share']>0) and (
@@ -155,11 +157,23 @@ def pos_seesaw(minerva, date):
     return pos_dic
 # ================== For funding schemes
 def fund_fixed(minerva, date):
+    if date==minerva.dateseries[0]:
+        return minerva.ini_fund
     infund=minerva.cash_flow
+    return infund
+
+def fund_real(minerva, date):
+    ra=minerva.real_acc
+    infund=ra.loc[ra['Date']==date]
+    infund=infund.loc[infund['ticker']=='cash']
+    infund=infund['price'].values[0]
     return infund
 
 def fund_dynamic(minerva, date):
     # (drawdown, additional cashflow %)
+    if date==minerva.dateseries[0]:
+        return minerva.ini_fund
+    
     portion_adj=[
         (0.3,8),(0.25,6),(0.2,4),(0.15,2),(0.1,1),(0.05,0.5)]
     infund=minerva.cash_flow

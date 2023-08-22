@@ -8,7 +8,7 @@ import matplotlib.ticker as mtick
 print_prefix='lib.painter>>'
 
 
-def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
+def draw_perform_fig(df, scheme_name,tgts,evaltb_dic, track_mark=None):
     # Calculate the daily return rate
 
     # Calculate the maximum drawdown
@@ -177,8 +177,12 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic):
 
     # Show the plot
     #plt.show()
-    plt.savefig(os.path.join('./fig/', scheme_name+'.png'), 
-        bbox_inches='tight', dpi=const.DPI)
+    if track_mark is None:
+        plt.savefig(os.path.join('./fig/', scheme_name+'.png'), 
+            bbox_inches='tight', dpi=const.DPI)
+    else:
+        plt.savefig(os.path.join('./fig/', scheme_name+'.'+track_mark+'.png'), 
+            bbox_inches='tight', dpi=const.DPI)
 def fast_plot(oculus):
     # Time series
     ticker=oculus.ticker

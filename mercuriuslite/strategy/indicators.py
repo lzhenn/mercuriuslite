@@ -29,18 +29,24 @@ def ma_crossover(hist, para_lst, trunc_idx=0):
     # signal is a vector of -1, 0, 1
     signal=np.sign(np.diff(np.sign(diff), prepend=0.0))
     
+    # if use previous trading day close, avoid future signal in trading
+    if pclose:
+        signal=np.concatenate(([0.0], signal))
+        diff=np.concatenate(([0.0], diff))
     # tranction from given start idx
     signal=signal[trunc_idx:]
+    diff=diff[trunc_idx:]
     # set initial
     # Find the index of the first nonzero value in the signal array
-    index = np.where(signal != 0)[0][0]
+    try:
+        index = np.where(signal != 0)[0][0]
+    except:
+        if diff[0]>0:
+            signal[0]=1
     # Set the value of signal[0] based on the value at the first nonzero index
-    if index>0:
+    if 'index' in locals() and index>0:
         if signal[index] == -1:
             signal[0] = 1
         else:
             signal[0] = 0
-    # if use previous trading day close, avoid future signal
-    if pclose:
-        signal=np.concatenate(([0.0], signal[:-1]))
     return signal

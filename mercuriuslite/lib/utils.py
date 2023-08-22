@@ -81,16 +81,40 @@ def cal_trade_day(lead_str):
             return int(lead_str.replace(key_wd,''))*const.TRAD_DAYS[key_wd]
     if lead_str == 'none':
         return -1
-    throw_error(f'key lead str (day, week, mon, yr) not found: {lead_str}')
+    throw_error(f'{print_prefix}key lead str (day, week, mon, yr) not found: {lead_str}')
+def real_acc_dates(acc_rec, tgt='cash'):
+    acc_dates=acc_rec[acc_rec['ticker']==tgt]['Date']
+    return acc_dates.values
 
+def construct_message(scheme_name, date):
+    msg_dic={
+        'title_lst':[scheme_name,'None',f'{date.strftime("%Y-%m-%d")}'],
+        'msg_body':'No proposed operation on '+f'{date.strftime("%Y-%m-%d")}'
+    }
+    return msg_dic
+def feed_message(msg_dic, op_keyword, price=0, share=0):
+    if msg_dic['title_lst'][2]=='None':
+        msg_dic['title_lst'][2]=f'{op_keyword}'
+        msg_dic['msg_body']=msg_dic['title_lst'][3]+':\n'
+    else:
+        msg_dic['title_lst'][2]+=f'|{op_keyword}'
+    
+    if op_keyword=='CASH_IN':
+        msg_dic['msg_body']+=f'New Cash in {fmt_value(price)}'
+    
+    return msg_dic
+def init_operation_df():
+    return pd.DataFrame(columns=['Date', 'ticker', 'share', 'price'])
 def gen_date_intervals(dateseries, interval):
     if interval=='none':
         return []
+    elif interval=='real':
+        return 'real'
     try:
         dates=pd.date_range(start=dateseries[1], end=dateseries[-1], freq=interval)
         return dates.to_list()
     except:
-        throw_error(f'invalid date interval: {interval}')
+        throw_error(f'{print_prefix}invalid date interval: {interval}')
    
 def parse_intime(dt_str):
     if not(dt_str=='0'):

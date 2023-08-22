@@ -46,23 +46,39 @@ class Minerva:
         self.model_names=cfg['SCHEMER']['port_models'].replace(' ','').split(',')
 
         if cfg['SCHEMER'].getboolean('backtest_flag'):
-            self.backtest_start_time=utils.parse_intime(
-                self.cfg['SCHEMER']['backtest_start_time'])     
-            self.backtest_end_time=utils.parse_intime(
-                self.cfg['SCHEMER']['backtest_end_time'])
-            if self.backtest_end_time =='0':
-                self.backtest_end_time=datetime.datetime.now()
-            self.dateseries=pd.date_range(
-                start=self.backtest_start_time,
-                end=self.backtest_end_time)
+            self.scheme_start_time=utils.parse_intime(
+                self.cfg['SCHEMER']['scheme_start_time'])     
+            self.scheme_end_time=utils.parse_intime(
+                self.cfg['SCHEMER']['scheme_end_time'])
+            if self.scheme_end_time =='0':
+                self.scheme_end_time=datetime.datetime.now()
+            self.forward_flag=False
+            self.real_prefix=''
+        elif cfg['SCHEMER'].getboolean('forward_flag'):
+            self.forward_flag=True
+            self.real_prefix='**REAL TRADE**'
+            self.real_acc=io.load_real_acc(self.cfg['SCHEMER']['real_acc_file'])
+            self.scheme_start_time=self.real_acc.loc[0, 'Date']
+            self.scheme_end_time=datetime.datetime.now()
+        else:
+            utils.throw_error(f'{print_prefix}Either backtest or forward flag set to True')
+        
+        self.dateseries=pd.date_range(
+            start=self.scheme_start_time,
+            end=self.scheme_end_time)
         
         self._load_portfolio()
         
         # cash flow        
+        if self.forward_flag:
+            self.real_cash_dates=utils.real_acc_dates(self.real_acc,'cash')
+        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
         self.cash_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['cash_frq'])
-        
+        if self.cash_dates=='real':
+            self.cash_dates=self.real_cash_dates
+
         # rebalance
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
@@ -71,6 +87,8 @@ class Minerva:
         # no risk
         if self.norisk_scheme_name=='dynamic':
             self.noriskhist=io.load_hist(self.db_path, '^IRX')
+        # operation records
+        self.operation_df=utils.init_operation_df()
             
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
@@ -80,46 +98,54 @@ class Minerva:
             #self.port_model[tgt], self.port_meta[tgt]=io.load_model(
             #    self.model_path, model_name, tgt, baseline=False)
         trading_dates=self.port_hist[self.port_tgts[0]].index
-        idx_start=trading_dates.searchsorted(self.backtest_start_time)
+        idx_start=trading_dates.searchsorted(self.scheme_start_time)
         self.trading_dates=trading_dates[idx_start:]
         self.basehist=io.load_hist(self.db_path, self.baseticker)
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
-        
-    def backtest(self):
+    def account_evolve(self):
         '''
+        account track evolve in either backtesting or forward evolving mode
         '''
-        start_day=self.backtest_start_time
-        end_day=self.backtest_end_time
+        start_day=self.scheme_start_time
+        end_day=self.scheme_end_time
         
         utils.write_log(
-            f'{print_prefix}{const.HLINE}BACKTESTING: {start_day.strftime("%Y-%m-%d")} START{const.HLINE}')
+            f'{print_prefix}{const.HLINE}{self.real_prefix}ACCOUNT EVOLVE: {start_day.strftime("%Y-%m-%d")} START{const.HLINE}')
         self._init_portfolio()
         
         # -----------------backtrace-------------------
-        for idx in range(len(self.dateseries)):
-            date=self.dateseries[idx]
+        for date in self.dateseries:
             self._event_process(date)
         
         utils.write_log(
-            f'{print_prefix}{const.HLINE}BACKTESTING: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
+            f'{print_prefix}{const.HLINE}{self.real_prefix}ACCOUNT EVOLVE: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
+        
+        # inspect portfolio track
         self.inspect()
-
-    def inspect(self):
+        if self.forward_flag:
+            self.inspect(track_mark='real')
+        
+        self.operation_df.to_csv(
+            self.cfg['SCHEMER']['out_operation_file'], index=False)
+    def inspect(self,track_mark=None):
         '''
         inspect portfolio
         '''
         utils.write_log(f'{print_prefix}inspect portfolio...')
-        track=self.track
+        if track_mark is None:
+            track=self.track
+        else:
+            track=self.real_track
+
         track=prudentia.track_inspect(track)
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
             inplace=True)
-       
 
         # baseline return
         track['baseline_return']=track['accum_return']
-        idx_start=self.basehist.index.searchsorted(self.backtest_start_time)
+        idx_start=self.basehist.index.searchsorted(self.scheme_start_time)
         base_value=self.basehist.iloc[idx_start]['Close']
         mkt_value=base_value       
         for date in self.dateseries:
@@ -132,8 +158,8 @@ class Minerva:
         eval_table=prudentia.strategy_eval(track)
         painter.table_print(eval_table) 
         painter.draw_perform_fig(
-            track, self.scheme_name, self.port_tgts, eval_table)
-        print(track.iloc[-1])
+            track, self.scheme_name, self.port_tgts, eval_table, track_mark)
+        #print(track.iloc[-1])
     def _event_process(self, date):
         '''
         listen to events: 
@@ -142,21 +168,30 @@ class Minerva:
         3. rebalance signal
         '''
         #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
+        self._on_kickoff(date)
         self._on_funding(date)
         self._on_rebalance(date)
         self._on_trade(date)
         self._on_rolling(date)
-    
+        if self.forward_flag:
+            self._on_rolling(date,track_mark='real')
 
     def _init_portfolio(self):
         # build portfolio track
         date_series=self.dateseries
         self.track = utils.init_track(date_series, self.port_tgts)
-    
+        if self.forward_flag:
+            self.real_track=utils.init_track(date_series, self.port_tgts)
+
+    def _on_kickoff(self, date):
+        self.NRDR=self.norisk_scheme(self,date)
+
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
+            if self.forward_flag:
+                pass
             if date in self.trading_dates:    
-                utils.write_log(f'{print_prefix}Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
+                utils.write_log(f'{print_prefix}Proposed Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
                 port_dic=self.pos_scheme(self, date)
                 track_rec=self.track.loc[date]
                 total_value=track_rec['total_value']
@@ -179,73 +214,119 @@ class Minerva:
         #if (date in self.trading_dates and self.new_fund):
             self.strategy(self, date)
             self.new_fund=False
-            
+        if self.forward_flag and date in self.real_acc['Date'].values:
+            self._trade_real(date)
+    
+    def _trade_real(self,date):
+        track=self.real_track
+        real_acc=self.real_acc
+        trade_rec=real_acc[real_acc['Date']==date]
+        for row in trade_rec.itertuples():
+            tgt=row.ticker
+            if tgt == 'cash':
+                continue
+            share=row.share
+            trade_price=row.price
+            track.loc[date,f'{tgt}_share']+=share
+            track.loc[date,f'{tgt}_value']+=share*trade_price
+            track.loc[date,'port_value']+=share*trade_price
+            track.loc[date,'cash']-=share*trade_price
+            track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+            utils.write_log(
+                    f'{print_prefix}{self.real_prefix}Trade signal captured:{share:.0f} shares'+\
+                    f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
+                    f' on {date.strftime("%Y-%m-%d")}'
+                )
+                
     def _on_funding(self, date):
         if date==self.dateseries[0]:
-            fund_str=utils.fmt_value(self.init_fund)
-            utils.write_log(
-                f'{print_prefix}Initial funding signal captured, current fund:{fund_str}'+\
-                f' on {date.strftime("%Y-%m-%d")}')
-            self.track.loc[date, 'cash']=self.init_fund
-            self.track.loc[date, 'total_value']=self.init_fund
-            self.track.loc[date, 'accu_fund']=self.init_fund
-            self.new_fund=True
-            # new funding 
-            self.act_fund=self.init_fund
-            self.NRDR=self.norisk_scheme(self,date)
-            # init scheme
-            getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
+            act_flow=self.init_fund
         elif date in self.cash_dates:
-            act_flow=self.fund_scheme(
-                self, date)
-            self.track.loc[date,'cash']+=act_flow
-            self.track.loc[date,'total_value']+=act_flow
-            self.track.loc[date,'accu_fund']+=act_flow
-            self.new_fund=True
-            # new funding
-            self.act_fund=act_flow
-            utils.write_log(
-                f'{print_prefix}Funding signal captured, current fund:'+\
-                f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-                f' on {date.strftime("%Y-%m-%d")}')
-
-
-    def _on_rolling(self, date): 
+            act_flow=self.fund_scheme(self, date)
+        else:
+            return
+        
+        self._feed_operation(date, 'cash', np.nan, act_flow)
+        self.track.loc[date, 'cash']+=act_flow
+        self.track.loc[date, 'total_value']+=act_flow
+        self.track.loc[date, 'accu_fund']+=act_flow
+        
+        self.new_fund=True
+        # new funding 
+        self.act_fund=act_flow
+        
+        # init trade scheme
+        if date==self.dateseries[0]:
+            getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
+        utils.write_log(
+            f'{print_prefix}Proposed Funding signal captured, current fund:'+\
+            f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+            f' on {date.strftime("%Y-%m-%d")}')
+        
+        
+        if self.forward_flag: 
+            if date in self.real_cash_dates:
+                real_flow=scheme_zoo.fund_real(self, date)
+                self.real_act_fund=real_flow
+                self.real_track.loc[date, 'cash']+=real_flow
+                self.real_track.loc[date, 'total_value']+=real_flow
+                self.real_track.loc[date, 'accu_fund']+=real_flow
+                utils.write_log(
+                    f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
+                    f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+                    f' on {date.strftime("%Y-%m-%d")}')
+            
+    def _feed_operation(self, date, tgt, share, price):
+        date=date.strftime("%Y%m%d")
+        new_row = {'Date': date, 'ticker': tgt, 'share': share, 'price': price}
+        self.operation_df=self.operation_df.append(new_row, ignore_index=True)
+    def _on_rolling(self, date, track_mark=None): 
         '''
         rolling the whole pipeline 
         wrap the day close and roll to the next day open
         '''
-        if date in self.trading_dates:    
-            self._adjust_value('Close', date)
+        if track_mark is None:
+            track=self.track
+            cash_dates=self.cash_dates
+            if self.forward_flag:
+                ini_fund=self.fund_scheme(self, cash_dates[0])
+            else:
+                ini_fund=self.init_fund
+        else:
+            track=self.real_track
+            cash_dates=self.real_cash_dates
+            ini_fund=self.fund_scheme(self, cash_dates[0])
         
-        track=self.track
+        if date in self.trading_dates:    
+            self._adjust_value(track, 'Close', date)
+        
         day_total=track.loc[date,'total_value']
-        self.NRDR=self.norisk_scheme(self,date)
         if not(date==self.dateseries[0]):
             yesterday=date+datetime.timedelta(days=-1)
-            if date in self.cash_dates:
+
+            if date in cash_dates:
                 in_fund=self.act_fund
-                track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
+                track.loc[date, 'daily_return']=day_total/(
+                    track.loc[yesterday,'total_value']+in_fund)
                 track.loc[date, 'norisk_total_value']=(
                     track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
             else:
                 track.loc[date, 'daily_return']=day_total/track.loc[yesterday,'total_value']
                 track.loc[date, 'norisk_total_value']=track.loc[yesterday, 'norisk_total_value']*self.NRDR
         else:
-            track.loc[date, 'daily_return']=track.loc[date,'total_value']/self.init_fund
-            track.loc[date, 'norisk_total_value']=self.init_fund*self.NRDR
+            track.loc[date, 'daily_return']=track.loc[date,'total_value']/ini_fund
+            track.loc[date, 'norisk_total_value']=ini_fund*self.NRDR
         
         track['drawdown'] = (
             track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
+        
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             track.loc[tmr]=track.loc[date]
-
-    def _adjust_value(self, price_type, date):
+    def _adjust_value(self, track, price_type, date):
         '''
         adjust value based on open/low/high/close price
         '''
-        track=self.track
         track.loc[date,'port_value']=0.0
         for tgt in self.port_tgts:
             price_rec=self.port_hist[tgt].loc[date]
@@ -257,7 +338,7 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def trade(self,date, call_from='DCA', price_type='NearOpen'):
+    def trade(self, date, call_from='DCA', price_type='NearOpen'):
         '''
         determine exact position change, for input
         action_dict= 
@@ -285,16 +366,9 @@ class Minerva:
                 track.loc[date,f'{tgt}_value']+=share*trade_price
                 track.loc[date,'port_value']+=share*trade_price
                 track.loc[date,'cash']-=share*trade_price
+                self._feed_operation(date, tgt, share, trade_price)
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
-    def risk_manage(self,date):
-        pass     
-    def realtime_trade():
-        pass
-
-
- 
-
-
+    
 # ---Unit test---
 if __name__ == '__main__':
     pass

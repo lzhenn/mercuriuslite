@@ -36,7 +36,13 @@ def load_hist(dbpath, tgt):
     tgt_hist=pd.read_csv(fn_path, parse_dates=True, 
         date_parser=date_parser, index_col='Date')
     return tgt_hist
+def load_real_acc(acc_file):
+    ''' load real account trading history '''
 
+    acc_real=pd.read_csv(acc_file, parse_dates=True)
+    acc_real['Date'] = pd.to_datetime(
+        acc_real['Date'], format='%Y%m%d')
+    return acc_real
 def match_xy(X,Y,lead_days, date_series):
     Y=Y[lead_days:]/Y[:-lead_days]-1
     X=X[:-lead_days]
