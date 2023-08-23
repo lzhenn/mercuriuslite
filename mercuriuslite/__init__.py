@@ -10,4 +10,4 @@ Jul 30, 2023 --- Kick off the project
 
 L_Zealot
 '''
-from .__main__ import Mercurius, copy_cfg
+from .__main__ import Mercurius, copy_cfg, resend_msg

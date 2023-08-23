@@ -124,8 +124,11 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic, track_mark=None):
     for period in longest_periods:
         start_date = df.loc[df['group'] == period].index[0]
         end_date = df.loc[df['group'] == period].index[-1]
+        max_lv=df['drawdown'].loc[start_date:end_date].max()
+        if max_lv<0.05:
+            continue
         ax[2].axvspan(start_date, end_date, alpha=0.3, color='grey')
-        x,y=start_date,-df['drawdown'].loc[start_date:end_date].max()
+        x,y=start_date,-max_lv
         ax[2].text(x, y-0.05, 
             f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
             ha='left', va='bottom', fontsize=const.SM_SIZE,

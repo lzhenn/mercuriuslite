@@ -4,10 +4,11 @@ import base64
 from email.message import EmailMessage
 
 import os
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
+from google_auth_oauthlib.flow import InstalledAppFlow
 SCOPES = ['https://mail.google.com/']
 
 def gmail_send_message(cfg, title, content):
@@ -24,6 +25,13 @@ def gmail_send_message(cfg, title, content):
     cred_file=os.path.join(cred_path,'token.json')
     if os.path.exists(cred_file):
         creds = Credentials.from_authorized_user_file(cred_file, SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        # Save the credentials for the next run
+        with open(cred_file, 'w') as token:
+            token.write(creds.to_json())
+
+
     try:
         service = build('gmail', 'v1', credentials=creds)
         message = EmailMessage()

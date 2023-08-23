@@ -3,6 +3,7 @@
 # ---imports---
 from sklearn.model_selection import train_test_split
 import numpy as np
+import json
 import pandas as pd
 import datetime, os
 from . import utils, cfgparser, mathlib
@@ -14,7 +15,16 @@ date_parser = lambda date: datetime.datetime.strptime(
     date.split()[0],'%Y-%m-%d')
 
 # ---Classes and Functions---
-       
+
+def archive_msg(fn, title, msg):
+    
+    dic={'title':title, 'msg_body':msg, 'date':datetime.datetime.now().strftime('%Y-%m-%d')}
+    with open(fn, 'w') as f:
+        json.dump(dic, f)
+def load_msg(fn):
+    with open(fn, 'r') as f:
+        dic=json.load(f)
+    return dic
 def load_xy(
         Xfile, Xnames, Yfile, Ytgt, Ylead, start_time='0', end_time='0'):
     

@@ -142,9 +142,9 @@ class Minerva:
         
     def msg_handler(self):
         title, content=utils.form_msg(self.msg_dic)
-        print(content)
-        #print(content)
-        #messenger.gmail_send_message(self.cfg, title, content)
+        io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
+        if self.cfg['SCHEMER'].getboolean('send_msg'):
+            messenger.gmail_send_message(self.cfg, title, content)
     def inspect(self,track_mark=None):
         '''
         inspect portfolio

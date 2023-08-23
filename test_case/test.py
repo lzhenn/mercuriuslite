@@ -1,8 +1,7 @@
 import mercuriuslite
-#mercuriuslite.copy_cfg('config.ma_cross.ini')
+mercuriuslite.copy_cfg('config.ma_cross.ini')
 
 agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
-
 #agent.as_crawler()
 #agent.crawler.fetch()
 #agent.crawler.fetch(inperiod='max')
@@ -21,3 +20,4 @@ agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
 
 agent.as_trader()
 agent.trader.account_evolve()
+#mercuriuslite.resend_msg(agent.cfg)

@@ -14,8 +14,9 @@ import sys, os
 import logging, logging.config
 import shutil
 import pkg_resources
+import datetime
 
-from .lib import cfgparser, utils, const
+from .lib import cfgparser, utils, const, io, messenger
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -106,4 +107,11 @@ def copy_cfg(dest_path):
             f"Config file '{resource_path}' not found in '{package_name}'.")
     shutil.copy2(src_path, dest_path)
 
- 
+def resend_msg(cfg):
+    msg_dic=io.load_msg(cfg['SCHEMER']['out_msg_file'])
+    date=datetime.datetime.now().strftime('%Y-%m-%d')
+    predate=msg_dic['date']
+    title=msg_dic['title'].replace(predate,date)
+    content=msg_dic['msg_body'].replace(predate,date)
+    messenger.gmail_send_message(cfg, title, content)
+    
