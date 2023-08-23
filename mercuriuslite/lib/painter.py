@@ -265,7 +265,6 @@ def get_info(y, ybase):
     info=info+'Return: {:.2%} ({:.2%})'.format(y.mean(), ybase.mean())
     return info
 
-def table_print(table):
+def table_print(table, table_fmt='fancy_grid'):
     from tabulate import tabulate
-    print(tabulate(
-        table.items(),headers=['Metrics', 'Value'],tablefmt='fancy_grid'))
+    return tabulate(table.items(),headers=['Metrics', 'Value'],tablefmt=table_fmt)

@@ -80,7 +80,8 @@ class Prudentia:
         
         track=baseline_inspect(track,self.basehist) 
         eval_table=strategy_eval(track)
-        painter.table_print(eval_table) 
+        #print(painter.table_print(eval_table))
+        
         painter.draw_perform_fig(
             track, self.strategy_name+'.vecbck', self.tickers, eval_table)
     
@@ -117,7 +118,7 @@ def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):
     track[tgt+'_share']=share_vec
     track['cash']+=cash_vec
     track['port_value']+=value_vec
-    print(track.loc[(track['action']==1 )| (track['action']==-1)])
+    #print(track.loc[(track['action']==1 )| (track['action']==-1)])
     return track
 
 def track_inspect(track):
@@ -168,9 +169,11 @@ def strategy_eval(track):
     val=utils.fmt_value(-drawdown,vtype='pct')
     table_dic['Max Drawdown']=val
    
-    val=utils.fmt_value(cagr/drawdown,vtype='f')
-    table_dic['MAR']=val
-
+    if drawdown>0:
+        val=utils.fmt_value(cagr/drawdown,vtype='f')
+        table_dic['MAR']=val
+    else:
+        table_dic['MAR']='NA'
    
     val=utils.fmt_value(
         track_end['norisk_total_value']/track_end['accu_fund']-1,vtype='pct')

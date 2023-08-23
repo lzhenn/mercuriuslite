@@ -33,14 +33,14 @@ class Mercurius:
     Mercurius is a class to drive the system
     '''
 
-    def __init__(self):
+    def __init__(self, cfgfn='config.case.ini'):
         self._setup_logging()
 
-        if not(os.path.exists(os.path.join(CWD,'config.case.ini'))):
+        if not(os.path.exists(os.path.join(CWD,cfgfn))):
             utils.write_log('config file not exist, copy from pkg...')
-            copy_cfg(os.path.join(CWD,'config.case.ini'))
+            copy_cfg(os.path.join(CWD,cfgfn))
         
-        self.cfg=cfgparser.read_cfg(os.path.join(CWD,'config.case.ini'))
+        self.cfg=cfgparser.read_cfg(os.path.join(CWD,cfgfn))
         self.ltm_dir=self.cfg['MERCURIUS']['ltm_dir']
         self.model_path=self.cfg['MERCURIUS']['model_path']
 

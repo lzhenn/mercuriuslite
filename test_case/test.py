@@ -1,7 +1,7 @@
 import mercuriuslite
-mercuriuslite.copy_cfg('config.case.ini')
+#mercuriuslite.copy_cfg('config.ma_cross.ini')
 
-agent=mercuriuslite.Mercurius()
+agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
 
 #agent.as_crawler()
 #agent.crawler.fetch()

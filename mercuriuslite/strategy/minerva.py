@@ -4,7 +4,7 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const, painter
+from ..lib import utils, io, const, painter, messenger
 from ..eval import prudentia 
 from . import scheme_zoo 
 import datetime
@@ -58,10 +58,20 @@ class Minerva:
             self.forward_flag=True
             self.real_prefix='**REAL TRADE**'
             self.real_acc=io.load_real_acc(self.cfg['SCHEMER']['real_acc_file'])
-            self.scheme_start_time=self.real_acc.loc[0, 'Date']
-            self.scheme_end_time=datetime.datetime.now()
+            
+            self.scheme_start_time=utils.parse_intime(
+                self.cfg['SCHEMER']['scheme_start_time'])     
+            if self.scheme_start_time =='0':
+                self.scheme_start_time=self.real_acc.loc[0, 'Date']
+        
+            self.scheme_end_time=utils.parse_intime(
+                    self.cfg['SCHEMER']['scheme_end_time'])
+            if self.scheme_end_time =='0':
+                self.scheme_end_time=datetime.datetime.now()
         else:
             utils.throw_error(f'{print_prefix}Either backtest or forward flag set to True')
+        
+        self.msg_dic=utils.construct_msg(self.scheme_name, self.scheme_end_time)
         
         self.dateseries=pd.date_range(
             start=self.scheme_start_time,
@@ -70,18 +80,19 @@ class Minerva:
         self._load_portfolio()
         
         # cash flow        
-        if self.forward_flag:
-            self.real_cash_dates=utils.real_acc_dates(self.real_acc,'cash')
-        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
-        self.cash_dates=utils.gen_date_intervals(
-            self.dateseries, cfg['SCHEMER']['cash_frq'])
-        if self.cash_dates=='real':
+        if self.forward_flag or self.cash_dates=='real':
+            self.real_cash_dates=utils.real_acc_dates(self.real_acc,'cash')
             self.cash_dates=self.real_cash_dates
+        else: 
+            self.cash_dates=utils.gen_date_intervals(
+            self.dateseries, cfg['SCHEMER']['cash_frq'])
 
         # rebalance
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
+        # LZN Debug
+        self.balance_dates.append(self.scheme_end_time)
         self.defer_balance=False
        
         # no risk
@@ -94,13 +105,13 @@ class Minerva:
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
             utils.write_log(f'{print_prefix}load {tgt}')
-            self.port_hist[tgt]=io.load_hist(self.db_path, tgt)
+            self.port_hist[tgt]=io.load_hist(self.db_path, tgt,add_pseudo=True)
             #self.port_model[tgt], self.port_meta[tgt]=io.load_model(
             #    self.model_path, model_name, tgt, baseline=False)
         trading_dates=self.port_hist[self.port_tgts[0]].index
         idx_start=trading_dates.searchsorted(self.scheme_start_time)
         self.trading_dates=trading_dates[idx_start:]
-        self.basehist=io.load_hist(self.db_path, self.baseticker)
+        self.basehist=io.load_hist(self.db_path, self.baseticker, add_pseudo=True)
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
     def account_evolve(self):
@@ -125,9 +136,15 @@ class Minerva:
         self.inspect()
         if self.forward_flag:
             self.inspect(track_mark='real')
-        
+            self.msg_handler()
         self.operation_df.to_csv(
             self.cfg['SCHEMER']['out_operation_file'], index=False)
+        
+    def msg_handler(self):
+        title, content=utils.form_msg(self.msg_dic)
+        print(content)
+        #print(content)
+        #messenger.gmail_send_message(self.cfg, title, content)
     def inspect(self,track_mark=None):
         '''
         inspect portfolio
@@ -135,8 +152,10 @@ class Minerva:
         utils.write_log(f'{print_prefix}inspect portfolio...')
         if track_mark is None:
             track=self.track
+            track_identity='Scheme Portfolio'
         else:
             track=self.real_track
+            track_identity='Real Portfolio'
 
         track=prudentia.track_inspect(track)
         track['drawdown'].where(
@@ -155,8 +174,15 @@ class Minerva:
         track['baseline_drawdown'] = (
             track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
         
+        # portfolio performance table
         eval_table=prudentia.strategy_eval(track)
-        painter.table_print(eval_table) 
+        tb_msg=painter.table_print(eval_table,table_fmt='rst')
+        #print(tb_msg)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'\n\n{track_identity}\n\n{tb_msg}') 
+        # last day track
+        tb_msg=painter.table_print(track.iloc[-1],table_fmt='rst')
+        #print(tb_msg)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'{tb_msg}')
         painter.draw_perform_fig(
             track, self.scheme_name, self.port_tgts, eval_table, track_mark)
         #print(track.iloc[-1])
@@ -188,35 +214,47 @@ class Minerva:
 
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
-            if self.forward_flag:
-                pass
+            if self.forward_flag and date ==self.dateseries[-1]:
+                self._rebalance(date, track_mark='real')
             if date in self.trading_dates:    
-                utils.write_log(f'{print_prefix}Proposed Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
-                port_dic=self.pos_scheme(self, date)
-                track_rec=self.track.loc[date]
-                total_value=track_rec['total_value']
-                for tgt in self.port_tgts:
-                    value=track_rec[f'{tgt}_value']
-                    self.action_dict[tgt]=total_value*port_dic[tgt]-value
-                # adjust by specific scheme
-                self.action_dict=getattr(scheme_zoo, self.scheme_name+'_rebalance')(self, date)
-                self.trade(date,call_from='Rebalance')
-                print_dic = {k: round(v, 2) for k, v in port_dic.items()}
-                utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic}')
-                self.defer_balance=False 
+                self._rebalance(date)
             else:
                 self.defer_balance=True
             # skip this month DCA invest
             self.new_fund=False
-                
+    def _rebalance(self,date,track_mark=None):
+        if track_mark is None:
+            track_rec=self.track.loc[date]
+            suffix='(proposed real acc)'
+        else:
+            track_rec=self.real_track.loc[date]
+            suffix=''
+        utils.write_log(f'{print_prefix}Proposed Rebalance signal captured on {date.strftime("%Y-%m-%d")}. {suffix}')
+        port_dic=self.pos_scheme(self, date)
+        total_value=track_rec['total_value']
+        for tgt in self.port_tgts:
+            value=track_rec[f'{tgt}_value']
+            self.action_dict[tgt]=total_value*port_dic[tgt]-value
+        # adjust by specific scheme
+        self.action_dict=getattr(
+            scheme_zoo, self.scheme_name+'_rebalance')(self, date, track_mark)
+        self.trade(date,call_from='Rebalance',track_mark=track_mark)
+        #print_dic = {k: round(v, 2) for k, v in port_dic.items()}
+        #utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic} ')
+        self.defer_balance=False 
+       
     def _on_trade(self, date):
         if (date in self.trading_dates):
         #if (date in self.trading_dates and self.new_fund):
             self.strategy(self, date)
-            self.new_fund=False
-        if self.forward_flag and date in self.real_acc['Date'].values:
-            self._trade_real(date)
-    
+            if date != self.dateseries[-1]:
+                self.new_fund=False
+        if self.forward_flag: 
+            if date in self.real_acc['Date'].values:
+                self._trade_real(date)
+            if date == self.dateseries[-1]:
+                self.strategy(self, date, track_mark='real')
+            
     def _trade_real(self,date):
         track=self.real_track
         real_acc=self.real_acc
@@ -243,6 +281,15 @@ class Minerva:
             act_flow=self.init_fund
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(self, date)
+        elif date == self.dateseries[-1] and date.day==1:
+            act_flow=scheme_zoo.fund_fixed(self, date)
+            self.msg_dic=utils.feed_msg_title(self.msg_dic, 'CASH_IN'+utils.fmt_value(act_flow))
+            msg=f'***CASH_IN***Funding signal captured, current fund:'+\
+                f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+                f' on {date.strftime("%Y-%m-%d")}'
+            utils.write_log(print_prefix+msg)
+            self.msg_dic=utils.feed_msg_body(self.msg_dic, '******MercuriusLite Operation Summary******\n\n')
+            self.msg_dic=utils.feed_msg_body(self.msg_dic, msg)
         else:
             return
         
@@ -288,15 +335,11 @@ class Minerva:
         if track_mark is None:
             track=self.track
             cash_dates=self.cash_dates
-            if self.forward_flag:
-                ini_fund=self.fund_scheme(self, cash_dates[0])
-            else:
-                ini_fund=self.init_fund
+            ini_fund=self.init_fund
         else:
             track=self.real_track
             cash_dates=self.real_cash_dates
             ini_fund=self.fund_scheme(self, cash_dates[0])
-        
         if date in self.trading_dates:    
             self._adjust_value(track, 'Close', date)
         
@@ -338,7 +381,7 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
-    def trade(self, date, call_from='DCA', price_type='NearOpen'):
+    def trade(self, date, call_from='DCA', price_type='NearOpen', track_mark=None):
         '''
         determine exact position change, for input
         action_dict= 
@@ -347,8 +390,11 @@ class Minerva:
         positive for buy, negative for sell 
         '''
         #self.risk_manage(date)
-
-        track=self.track
+        if track_mark is None:
+            track=self.track
+        else:
+            track=self.real_track
+            self.msg_dic=utils.feed_msg_title(self.msg_dic, call_from)
         #[('SPXL', -Val), ('SPY', Val)]
         act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
         for act_tgt in act_tgt_lst:
@@ -357,11 +403,16 @@ class Minerva:
             trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
             if not(share==0):
-                utils.write_log(
-                    f'{print_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
+                log_data=f'**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
                     f' on {date.strftime("%Y-%m-%d")}'
-                )
+                if track_mark=='real':
+                    self.msg_dic=utils.feed_msg_title(self.msg_dic, f'{tgt}:{share:.0f}@{trade_price:.2f}')
+                    self.msg_dic=utils.feed_msg_body(self.msg_dic, log_data)
+                    utils.write_log(log_data+' (proposed real acc)')
+                else:
+                    utils.write_log(print_prefix+log_data)
+
                 track.loc[date,f'{tgt}_share']+=share
                 track.loc[date,f'{tgt}_value']+=share*trade_price
                 track.loc[date,'port_value']+=share*trade_price

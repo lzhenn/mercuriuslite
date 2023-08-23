@@ -27,7 +27,6 @@ def gmail_send_message(cfg, title, content):
     try:
         service = build('gmail', 'v1', credentials=creds)
         message = EmailMessage()
-
         message.set_content(content)
 
         message['To'] = cfg['MERCURIUS']['recipient'] 

@@ -30,11 +30,23 @@ def load_xy(
     return X, Y, date_series 
     #self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
-def load_hist(dbpath, tgt):
+def load_hist(dbpath, tgt, add_pseudo=False):
     ''' load historical data accroding to dbpath and tgt '''
     fn_path=os.path.join(dbpath, tgt+'.csv')
     tgt_hist=pd.read_csv(fn_path, parse_dates=True, 
         date_parser=date_parser, index_col='Date')
+    if add_pseudo:
+        # add last day pseudo record
+        new_row=tgt_hist.iloc[-1]
+        tgt_hist = tgt_hist.append(new_row, ignore_index=False)
+        tgt_hist = tgt_hist.reset_index()
+        date_last=tgt_hist.iloc[-1]['Date']
+        tgt_hist['Date'].values[-1] = date_last+datetime.timedelta(days=1)
+        tgt_hist = tgt_hist.set_index('Date')
+        tgt_hist.iloc[-1]['High']=tgt_hist.iloc[-1]['High']-tgt_hist.iloc[-1]['Open']+tgt_hist.iloc[-1]['Close']
+        tgt_hist.iloc[-1]['Low']=tgt_hist.iloc[-1]['Low']-tgt_hist.iloc[-1]['Open']+tgt_hist.iloc[-1]['Close']
+        tgt_hist.iloc[-1]['Open']=tgt_hist.iloc[-1]['Close']
+        tgt_hist.iloc[-1]['Close']=(tgt_hist.iloc[-1]['High']+tgt_hist.iloc[-1]['Low'])/2
     return tgt_hist
 def load_real_acc(acc_file):
     ''' load real account trading history '''

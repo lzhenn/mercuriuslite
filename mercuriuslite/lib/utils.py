@@ -86,23 +86,27 @@ def real_acc_dates(acc_rec, tgt='cash'):
     acc_dates=acc_rec[acc_rec['ticker']==tgt]['Date']
     return acc_dates.values
 
-def construct_message(scheme_name, date):
+def construct_msg(scheme_name, date):
     msg_dic={
-        'title_lst':[scheme_name,'None',f'{date.strftime("%Y-%m-%d")}'],
-        'msg_body':'No proposed operation on '+f'{date.strftime("%Y-%m-%d")}'
+        'title_lst':[f'MercuriusLite Strategy: {scheme_name}','Summary',f'{date.strftime("%Y/%m/%d")}'],
+        'msg_body':''
     }
     return msg_dic
-def feed_message(msg_dic, op_keyword, price=0, share=0):
-    if msg_dic['title_lst'][2]=='None':
-        msg_dic['title_lst'][2]=f'{op_keyword}'
-        msg_dic['msg_body']=msg_dic['title_lst'][3]+':\n'
+def feed_msg_title(msg_dic, op_keyword):
+    if msg_dic['title_lst'][1]=='Summary':
+        msg_dic['title_lst'][1]=f'|{op_keyword}|'
     else:
-        msg_dic['title_lst'][2]+=f'|{op_keyword}'
-    
-    if op_keyword=='CASH_IN':
-        msg_dic['msg_body']+=f'New Cash in {fmt_value(price)}'
-    
+        msg_dic['title_lst'][1]+=f'{op_keyword}|'
     return msg_dic
+def feed_msg_body(msg_dic, content): 
+    msg_dic['msg_body']+=f'{content}\n'    
+    return msg_dic
+
+def form_msg(msg_dic):
+    title='|'.join(msg_dic['title_lst'])
+    msg=msg_dic['msg_body']
+    return title, msg
+
 def init_operation_df():
     return pd.DataFrame(columns=['Date', 'ticker', 'share', 'price'])
 def gen_date_intervals(dateseries, interval):

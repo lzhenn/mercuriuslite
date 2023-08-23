@@ -67,13 +67,20 @@ def ma_cross_init(minerva, date):
         minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.act_fund
         ma_cross=pd.DataFrame(ma_cross, index=trading_dates_ext, columns=['signal'])
         minerva.ma_cross[tgt]=ma_cross
-def ma_cross(minerva, date):
+def ma_cross(minerva, date, track_mark=None):
     # current track rec
-    curr_rec=minerva.track.loc[date]
+    if track_mark is None:
+        curr_rec=minerva.track.loc[date]
+    else:
+        curr_rec=minerva.real_track.loc[date]
+
     price_tpye=minerva.price_type
+    ma_flag=False
     for tgt in minerva.port_tgts:
         curr_hist=minerva.port_hist[tgt].loc[date]
         signal=minerva.ma_cross[tgt].loc[date].values[0]
+        if signal != 0:
+            ma_flag=True
         if signal == -1:
             minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
         minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
@@ -86,13 +93,17 @@ def ma_cross(minerva, date):
             for idx,tgt in enumerate(minerva.port_tgts):
                 if port_flag[idx]:
                     minerva.action_dict[tgt]+=minerva.act_fund/nexpose
-        minerva.trade(date, call_from='DCA',price_type=price_tpye)
+        minerva.trade(date, call_from='DCA',price_type=price_tpye, track_mark=track_mark)
         return
-    minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye)
+    if ma_flag:
+        minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye, track_mark=track_mark)
    
-def ma_cross_rebalance(minerva, date):
+def ma_cross_rebalance(minerva, date, track_mark=None):
     port_dic=minerva.pos_scheme(minerva, date)
-    curr_rec=minerva.track.loc[date]
+    if track_mark is None:
+        curr_rec=minerva.track.loc[date]
+    else:
+        curr_rec=minerva.real_track.loc[date]
     action_dict = minerva.action_dict
     total_value=curr_rec['total_value']
     for tgt in minerva.port_tgts:
@@ -158,7 +169,7 @@ def pos_seesaw(minerva, date):
 # ================== For funding schemes
 def fund_fixed(minerva, date):
     if date==minerva.dateseries[0]:
-        return minerva.ini_fund
+        return minerva.init_fund
     infund=minerva.cash_flow
     return infund
 
