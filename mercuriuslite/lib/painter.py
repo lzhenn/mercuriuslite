@@ -43,7 +43,7 @@ def draw_perform_fig(df, scheme_name,tgts,evaltb_dic, track_mark=None):
     #ax[0].set_yscale('log')
     ax[0].set_ylabel('NAV')
     ax[0].legend(loc='upper left',fontsize=const.SM_SIZE)
-    ax[0].set_title('Portfolio Performance')
+    ax[0].set_title('Portfolio Performance valid from '+str(df.index[0].date())+' to '+str(df.index[-1].date()))
 
     # ------------plot 1: return rate
     total_days=(df.index[-1]-df.index[0]).days
