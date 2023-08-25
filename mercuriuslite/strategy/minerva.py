@@ -81,7 +81,7 @@ class Minerva:
         
         # cash flow        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
-        if self.forward_flag or self.cash_dates=='real':
+        if self.forward_flag or self.cash_flow=='real':
             self.real_cash_dates=utils.real_acc_dates(self.real_acc,'cash')
             self.cash_dates=self.real_cash_dates
         else: 
@@ -153,9 +153,11 @@ class Minerva:
         if track_mark is None:
             track=self.track
             track_identity='Scheme Portfolio'
+            fig_fn=utils.form_scheme_fig_fn(self.cfg)
         else:
             track=self.real_track
             track_identity='Real Portfolio'
+            fig_fn=utils.form_scheme_fig_fn(self.cfg,suffix='real')
 
         track=prudentia.track_inspect(track)
         track['drawdown'].where(
@@ -184,7 +186,7 @@ class Minerva:
         #print(tb_msg)
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'{tb_msg}')
         painter.draw_perform_fig(
-            track, self.scheme_name, self.port_tgts, eval_table, track_mark)
+            track, self.scheme_name, self.port_tgts, fig_fn)
         #print(track.iloc[-1])
     def _event_process(self, date):
         '''

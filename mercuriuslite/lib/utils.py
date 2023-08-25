@@ -20,12 +20,26 @@ import logging, datetime
 import pandas as pd
 import numpy as np
 from . import const
+import os
 
 # ---Module regime consts and variables---
 print_prefix='lib.utils>>'
 
 
 # ---Classes and Functions---
+
+def form_scheme_fig_fn(cfg,suffix=''):
+    fig_path=cfg['POSTPROCESS']['fig_path']
+    fn_lst=[cfg['SCHEMER']['scheme_name']]
+    if cfg['SCHEMER'].getboolean('forward_flag'):
+        fn_lst.append('forward')
+    elif cfg['SCHEMER'].getboolean('backtest_flag'):
+        fn_lst.append('backtest')
+    if suffix!='':
+        fn_lst.append(suffix)
+    fn_lst.append('png')
+    fn=os.path.join(fig_path,'.'.join(fn_lst)) 
+    return fn
 def throw_error(msg):
     '''
     throw error and exit
