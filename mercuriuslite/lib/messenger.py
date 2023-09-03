@@ -55,20 +55,21 @@ def gmail_send_message(cfg, title, content):
     text = MIMEText(content)
     message.attach(text)
 
-    # Attach a file
-    fig_fn=utils.form_scheme_fig_fn(cfg)
-    with open(fig_fn, 'rb') as file:
-        attachment = MIMEImage(file.read(), _subtype='png')
-        attachment.add_header(
-            'Content-Disposition', 'attachment', filename='scheme.png')
-        message.attach(attachment)
-
+    # Attach a file, if any
+    attach_files=utils.parse_file_names(cfg['SCHEMER']['attach_files'])
+    for attach_file in attach_files:
+        with open(attach_file, 'rb') as file:
+            attachment = MIMEImage(file.read(), _subtype='png')
+            attachment.add_header(
+                'Content-Disposition', 'attachment', filename=attach_file.split('/')[-1])
+            message.attach(attachment)
     # Encode the message in base64
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     # Send the message
     try:
-        send_message = service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
+        send_message = service.users().messages().send(
+            userId='me', body={'raw': raw_message}).execute()
         print(F'Sent message: {send_message["id"]}')
     except HttpError as error:
         print(F'An error occurred: {error}')

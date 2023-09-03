@@ -181,6 +181,12 @@ def parse_endtime(dt_str):
         elif dt.weekday() == 0:
             dt+=datetime.timedelta(days=-2)
     return dt
+
+def parse_file_names(fns):
+    if fns.lower()=='none':
+        return []
+    fn_lst=fns.replace(' ','').split(',')
+    return fn_lst
 def parse_tswildcard(tgt_time, wildcard):
     '''
     parse string with timestamp wildcard to datetime object
