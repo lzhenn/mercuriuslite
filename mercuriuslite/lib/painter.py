@@ -5,10 +5,11 @@ import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+import seaborn as sns
 print_prefix='lib.painter>>'
 
 
-def draw_perform_fig(df, scheme_name, tgts, fig_fn):
+def draw_perform_fig(df, tgts, fig_fn):
     # Calculate the daily return rate
 
     # Calculate the maximum drawdown
@@ -95,9 +96,10 @@ def draw_perform_fig(df, scheme_name, tgts, fig_fn):
         label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
     ax[2].fill_between(
         df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
-   
+    max_str=utils.fmt_value(-df["drawdown"].max(),vtype="pct")
+    latest_str=utils.fmt_value(-df["drawdown"].iloc[-1],vtype="pct")
     ax[2].plot(df.index, -df['drawdown'], alpha=0.5, 
-               label=f'Drawdown (Max: {utils.fmt_value(-df["drawdown"].max(),vtype="pct")})', color='blue')
+               label=f'Drawdown (Max: {max_str}|Latest: {latest_str})', color='blue')
     ax[2].fill_between(
         df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
     
@@ -113,14 +115,18 @@ def draw_perform_fig(df, scheme_name, tgts, fig_fn):
     ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
     ax[2].set_ylabel('Drawdown')
 
-     # calculate periods when all values are larger than 0
+    # calculate periods when all values are larger than 0
     df['drawperiod'] = (df['drawdown'] > 0)
     df['group'] = (df['drawperiod'] != df['drawperiod'].shift()).cumsum()
     df['period'] = df.groupby('group')['drawperiod'].transform('cumsum')
     df['period'] = df['period'].diff(periods=-1)
+    
+        
     longest_periods = df.sort_values('period', ascending=False).head(5)['group'].unique()
     df['period_mark'] = df['group'].apply(
         lambda x: df.loc[df['group'] == x, 'period'].iloc[0] if x in longest_periods else 0)
+    
+    # 5 major drawdown periods
     for period in longest_periods:
         start_date = df.loc[df['group'] == period].index[0]
         end_date = df.loc[df['group'] == period].index[-1]
@@ -133,6 +139,21 @@ def draw_perform_fig(df, scheme_name, tgts, fig_fn):
             f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
             ha='left', va='bottom', fontsize=const.SM_SIZE,
             weight='bold')
+    # the last drawdown period, if any
+    if df['drawperiod'].iloc[-1]>0:
+        idx=-1
+        while (df['drawperiod'].iloc[idx]>0)and (abs(idx)<len(df)):
+            idx-=1
+        start_date = df.index[idx]
+        end_date = df.index[-1]
+        max_lv=df['drawdown'].loc[start_date:end_date].max()
+        ax[2].axvspan(start_date, end_date, alpha=0.4, color='coral')
+        x,y=start_date,-max_lv
+        ax[2].text(x, y-0.05, 
+            f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
+            ha='left', va='bottom', fontsize=const.SM_SIZE,
+            weight='bold')
+ 
     #ax_drawperiod=ax[2].twinx()
     #ax_drawperiod.plot(df.index, df['period'], color='green', linewidth=1)
 
@@ -257,6 +278,25 @@ def scatter_hist(x, y, ybase, ax, ax_histy):
         density=True, color='dodgerblue')
     ax_histy.hist(ybase, bins=50, orientation='horizontal', 
         density=True, alpha=0.5, color='grey')
+
+def draw_histograms(x, xnames, fig_fn):
+    '''
+    x (nsamples, nfeatures) is a numpy array
+    '''
+    fig, ax = plt.subplots(1, 1)
+    for i, xname in enumerate(xnames):
+        ax.hist(x[:,i], alpha=0.5, bins=50, label=xname)
+    ax.legend() 
+    ax.set_yscale('log')
+    plt.savefig(fig_fn, bbox_inches='tight', dpi=const.DPI)
+def draw_corr_heatmap(cr_mtx, xnames, fig_fn): 
+    sns.heatmap(cr_mtx, cmap='coolwarm', 
+                annot=True, fmt='.1f', 
+                xticklabels=xnames, yticklabels=xnames)
+    plt.title('Correlation Heatmap')
+    plt.xlabel('Tickers')
+    plt.ylabel('Tickers')
+    plt.savefig(fig_fn, bbox_inches='tight', dpi=const.DPI)
 
 def get_info(y, ybase):
     info='Win: {:.1%} ({:.1%})\n'.format((y>0).sum()/len(y),(ybase>0).sum()/len(ybase))

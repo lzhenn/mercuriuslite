@@ -21,4 +21,4 @@ HLINE='------------------'
 SM_SIZE = 8
 MID_SIZE = 12
 LARGE_SIZE = 14
-DPI=240
+DPI=180

@@ -2,7 +2,7 @@
 """specific module for IO"""
 # ---imports---
 import os
-from . import const
+from . import const, utils
 import numpy as np
 # ---Module regime consts and variables---
 print_prefix='lib.math>>'

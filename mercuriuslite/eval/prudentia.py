@@ -5,6 +5,7 @@ print_prefix='eval.prudentia>>'
 from ..lib import utils, io, mathlib, painter
 from ..strategy import indicators
 import numpy as np
+import os
 class Prudentia:
     '''
     prudentia evaluator: core class, single target strategy vector evaluator 
@@ -39,22 +40,25 @@ class Prudentia:
         for tgt in self.tickers:
             utils.write_log(f'{print_prefix}load {tgt}')
             self.hist[tgt]=io.load_hist(self.ltm_dir, tgt)
-            
+
+        self.hist, _ =utils.trim_hist(self.hist) 
         dateseries=self.hist[self.tickers[0]].index
-        if self.eval_start_time == '0':
-            idx_start=0
-        else:
+        if self.eval_start_time != '0':
             idx_start=dateseries.searchsorted(self.eval_start_time)
-        if self.eval_end_time == '0':
-            idx_end=dateseries.shape[0]
         else:
-            idx_end=dateseries.searchsorted(self.eval_end_time) 
+            idx_start=0
+        if self.eval_end_time != '0':
+            idx_end=dateseries.searchsorted(self.eval_end_time)
+        else:
+            idx_end=-1
         self.dateseries=dateseries[idx_start:idx_end]
-        self.basehist=io.load_hist(self.ltm_dir, self.baseticker) 
+        for tgt in self.tickers:
+            self.hist[tgt]=self.hist[tgt].loc[self.dateseries]
+        self.basehist=io.load_hist(self.ltm_dir, self.baseticker, dateseries=self.dateseries) 
     def _init_portfolio(self):
         # build portfolio track
-        date_series=self.dateseries
-        self.track = utils.init_track(date_series, self.tickers)
+        dateseries=self.dateseries
+        self.track = utils.init_track(dateseries, self.tickers)
  
     def judge(self):
         track=self.track
@@ -66,9 +70,9 @@ class Prudentia:
         for idx,tgt in enumerate(self.tickers):
             idx_start=self.hist[tgt].index.searchsorted(track.index[0])
             track['action']=self.strategy(
-                self.hist[tgt], self.paras[idx].replace(' ','').split(','),idx_start)
+                self.hist[tgt], self.paras[idx].replace(' ','').split(','),idx_start)[:-1]
             cash2use=accu_fund*self.portions[idx]
-            track=vector_eval(track,self.hist[tgt],tgt,cash2use=cash2use)    
+            track=vector_eval(track,self.hist[tgt],tgt,cash2use=cash2use) 
         track['total_value']=track['cash']+track['port_value']
         dr_vec=1+np.diff(
             track['total_value'].values,prepend=accu_fund)/np.concatenate(([accu_fund],track['total_value'].values[:-1]))
@@ -80,10 +84,12 @@ class Prudentia:
         
         track=baseline_inspect(track,self.basehist) 
         eval_table=strategy_eval(track)
-        #print(painter.table_print(eval_table))
-        
+        print(painter.table_print(eval_table))
+        fig_fn=os.path.join(
+            self.cfg['POSTPROCESS']['fig_path'],
+            '.'.join([self.strategy_name,'eval','png'])) 
         painter.draw_perform_fig(
-            track, self.strategy_name+'.vecbck', self.tickers, eval_table)
+            track, self.tickers, fig_fn)
     
 
 def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):

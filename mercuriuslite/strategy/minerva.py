@@ -48,10 +48,8 @@ class Minerva:
         if cfg['SCHEMER'].getboolean('backtest_flag'):
             self.scheme_start_time=utils.parse_intime(
                 self.cfg['SCHEMER']['scheme_start_time'])     
-            self.scheme_end_time=utils.parse_intime(
+            self.scheme_end_time=utils.parse_endtime(
                 self.cfg['SCHEMER']['scheme_end_time'])
-            if self.scheme_end_time =='0':
-                self.scheme_end_time=datetime.datetime.now()
             self.forward_flag=False
             self.real_prefix=''
         elif cfg['SCHEMER'].getboolean('forward_flag'):
@@ -64,10 +62,8 @@ class Minerva:
             if self.scheme_start_time =='0':
                 self.scheme_start_time=self.real_acc.loc[0, 'Date']
         
-            self.scheme_end_time=utils.parse_intime(
+            self.scheme_end_time=utils.parse_endtime(
                     self.cfg['SCHEMER']['scheme_end_time'])
-            if self.scheme_end_time =='0':
-                self.scheme_end_time=datetime.datetime.now()
         else:
             utils.throw_error(f'{print_prefix}Either backtest or forward flag set to True')
         
@@ -145,6 +141,7 @@ class Minerva:
         io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
         if self.cfg['SCHEMER'].getboolean('send_msg'):
             messenger.gmail_send_message(self.cfg, title, content)
+    
     def inspect(self,track_mark=None):
         '''
         inspect portfolio
@@ -185,8 +182,7 @@ class Minerva:
         tb_msg=painter.table_print(track.iloc[-1],table_fmt='rst')
         #print(tb_msg)
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'{tb_msg}')
-        painter.draw_perform_fig(
-            track, self.scheme_name, self.port_tgts, fig_fn)
+        painter.draw_perform_fig(track, self.port_tgts, fig_fn)
         #print(track.iloc[-1])
     def _event_process(self, date):
         '''

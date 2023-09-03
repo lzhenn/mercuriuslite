@@ -2,6 +2,9 @@ from __future__ import print_function
 
 import base64
 from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 
 import os
 from google.auth.transport.requests import Request
@@ -9,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+from . import utils
 SCOPES = ['https://mail.google.com/']
 
 def gmail_send_message(cfg, title, content):
@@ -25,33 +30,46 @@ def gmail_send_message(cfg, title, content):
     cred_file=os.path.join(cred_path,'token.json')
     if os.path.exists(cred_file):
         creds = Credentials.from_authorized_user_file(cred_file, SCOPES)
+    if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-        # Save the credentials for the next run
-        with open(cred_file, 'w') as token:
-            token.write(creds.to_json())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                os.path.join(cred_path,'client_secret.json'), SCOPES)
+            creds = flow.run_local_server(port=0)
 
+    # Save the credentials for the next run
+    with open(cred_file, 'w') as token:
+        token.write(creds.to_json())
 
+    service = build('gmail', 'v1', credentials=creds)
+    
+    # Create a message object
+    message = MIMEMultipart()
+    
+    # Set the message body
+    message['To'] = cfg['MERCURIUS']['recipient'] 
+    message['From'] = cfg['MERCURIUS']['sender']
+    message['Subject'] = title
+    
+    text = MIMEText(content)
+    message.attach(text)
+
+    # Attach a file
+    fig_fn=utils.form_scheme_fig_fn(cfg)
+    with open(fig_fn, 'rb') as file:
+        attachment = MIMEImage(file.read(), _subtype='png')
+        attachment.add_header(
+            'Content-Disposition', 'attachment', filename='scheme.png')
+        message.attach(attachment)
+
+    # Encode the message in base64
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    # Send the message
     try:
-        service = build('gmail', 'v1', credentials=creds)
-        message = EmailMessage()
-        message.set_content(content)
-
-        message['To'] = cfg['MERCURIUS']['recipient'] 
-        message['From'] = cfg['MERCURIUS']['sender']
-        message['Subject'] = title
-
-        # encoded message
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()) \
-            .decode()
-
-        create_message = {
-            'raw': encoded_message
-        }
-        # pylint: disable=E1101
-        send_message = (service.users().messages().send
-                        (userId="me", body=create_message).execute())
-        print(F'Message Id: {send_message["id"]}')
+        send_message = service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
+        print(F'Sent message: {send_message["id"]}')
     except HttpError as error:
         print(F'An error occurred: {error}')
         send_message = None

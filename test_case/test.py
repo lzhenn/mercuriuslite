@@ -1,7 +1,7 @@
 import mercuriuslite
-mercuriuslite.copy_cfg('config.ma_cross.ini')
+mercuriuslite.copy_cfg('config.veceval.ini')
 
-agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
+agent=mercuriuslite.Mercurius(cfgfn='config.veceval.ini')
 #agent.as_crawler()
 #agent.crawler.fetch()
 #agent.crawler.fetch(inperiod='max')
@@ -10,6 +10,9 @@ agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
 #agent.as_predictor()
 #agent.predictor.train()
 #agent.predictor.predict()
+
+#agent.as_inspector()
+#agent.inspector.analyze()
 
 #agent.as_evaluator(agent.predictor)
 #agent.evaluator.bayes_test()

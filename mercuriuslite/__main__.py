@@ -57,6 +57,10 @@ class Mercurius:
         from .model import oculus
         self.predictor=oculus.Oculus(self)
     
+    def as_inspector(self):
+        from .eval import metatron
+        self.inspector=metatron.Metatron(self)
+        
     def as_evaluator(self, predictor):
         '''single model evaluator'''
         from .eval import iustitia

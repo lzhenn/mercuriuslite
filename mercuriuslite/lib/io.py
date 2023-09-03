@@ -40,7 +40,7 @@ def load_xy(
     return X, Y, date_series 
     #self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
-def load_hist(dbpath, tgt, add_pseudo=False):
+def load_hist(dbpath, tgt, add_pseudo=False, dateseries=None):
     ''' load historical data accroding to dbpath and tgt '''
     fn_path=os.path.join(dbpath, tgt+'.csv')
     tgt_hist=pd.read_csv(fn_path, parse_dates=True, 
@@ -57,6 +57,8 @@ def load_hist(dbpath, tgt, add_pseudo=False):
         tgt_hist.iloc[-1]['Low']=tgt_hist.iloc[-1]['Low']-tgt_hist.iloc[-1]['Open']+tgt_hist.iloc[-1]['Close']
         tgt_hist.iloc[-1]['Open']=tgt_hist.iloc[-1]['Close']
         tgt_hist.iloc[-1]['Close']=(tgt_hist.iloc[-1]['High']+tgt_hist.iloc[-1]['Low'])/2
+    if dateseries is not None:
+        tgt_hist=tgt_hist.loc[dateseries]
     return tgt_hist
 def load_real_acc(acc_file):
     ''' load real account trading history '''

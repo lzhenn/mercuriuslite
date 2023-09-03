@@ -28,6 +28,18 @@ print_prefix='lib.utils>>'
 
 # ---Classes and Functions---
 
+def trim_hist(hist):
+    ''' trim hist '''
+    start_dates, end_dates =[],[] 
+    for ticker in hist.keys():
+        start_dates.append(hist[ticker].index[0])
+        end_dates.append(hist[ticker].index[-1])
+    start_date=sorted(start_dates)[-1]
+    end_date=sorted(end_dates)[0]
+    for ticker in hist.keys():
+        hist[ticker]=hist[ticker].loc[start_date:end_date]
+    write_log(f'{print_prefix}Mercurius.trim_hist()...valid from {start_date} to {end_date}')
+    return hist, len(hist[ticker])
 def form_scheme_fig_fn(cfg,suffix=''):
     fig_path=cfg['POSTPROCESS']['fig_path']
     fn_lst=[cfg['SCHEMER']['scheme_name']]
@@ -89,6 +101,26 @@ def init_track(dates, tgts):
         track[f'{ticker}_share']=0
 
     return track
+
+def cal_tr(hist):
+    '''
+    calculate true range
+    '''
+    tr=np.zeros(len(hist))
+    o,l,h,c=hist['Open'],hist['Low'].values,hist['High'].values,hist['Close'].values
+    tr_mtx=np.array((h[1:]-l[1:],abs(h[1:]-c[0:-1]),abs(c[0:-1]-l[0:-1])))
+    tr=tr_mtx.max(axis=0)
+    tr=np.insert(tr, 0, h[0]-l[0], axis=0)
+    tr=tr/o
+    return tr
+def cal_daychange(hist): 
+    '''
+    calculate day change
+    '''
+    dc=np.zeros(len(hist))
+    c=hist['Close'].values
+    dc=np.diff(c, prepend=c[0])/c
+    return dc
 def cal_trade_day(lead_str):
     for key_wd in ['day','week','mon','qtr','yr']:
         if key_wd in lead_str:
@@ -138,7 +170,17 @@ def parse_intime(dt_str):
     if not(dt_str=='0'):
         return datetime.datetime.strptime(dt_str, '%Y%m%d')
     else: 
-        return dt_str 
+        return dt_str
+def parse_endtime(dt_str): 
+    if not(dt_str=='0'):
+        return datetime.datetime.strptime(dt_str, '%Y%m%d')
+    else: 
+        dt=datetime.datetime.now()
+        if dt.weekday() == 6:
+            dt+=datetime.timedelta(days=-1)
+        elif dt.weekday() == 0:
+            dt+=datetime.timedelta(days=-2)
+    return dt
 def parse_tswildcard(tgt_time, wildcard):
     '''
     parse string with timestamp wildcard to datetime object
