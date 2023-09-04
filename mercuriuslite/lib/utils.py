@@ -176,6 +176,9 @@ def parse_endtime(dt_str):
         return datetime.datetime.strptime(dt_str, '%Y%m%d')
     else: 
         dt=datetime.datetime.now()
+        ymd=dt.strftime('%Y%m%d')
+        if ymd in const.HOLIDAYS:
+            dt+=datetime.timedelta(days=-1)
         if dt.weekday() == 6:
             dt+=datetime.timedelta(days=-1)
         elif dt.weekday() == 0:
@@ -183,7 +186,7 @@ def parse_endtime(dt_str):
     return dt
 
 def parse_file_names(fns):
-    if fns.lower()=='none':
+    if fns.strip().lower() in ['','none']:
         return []
     fn_lst=fns.replace(' ','').split(',')
     return fn_lst
@@ -233,14 +236,15 @@ def fmt_value(val, vtype='usd', dec=2):
     # vtype='usd','pct'
     if vtype=='usd':
         fmt_val=f'${val:.2f}'
-    if vtype=='pct':
+    elif vtype=='pct':
         if val>=0:
             fmt_val=f'+{val:.2%}'
         else:
             fmt_val=f'{val:.2%}'
-    if vtype=='f':
+    elif vtype=='f':
         fmt_val=f'{val:.2f}'
-        
+    else:
+        fmt_val=val
     return fmt_val 
 # ---Unit test---
 if __name__ == '__main__':

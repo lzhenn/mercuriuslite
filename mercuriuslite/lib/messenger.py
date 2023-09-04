@@ -52,17 +52,18 @@ def gmail_send_message(cfg, title, content):
     message['From'] = cfg['MERCURIUS']['sender']
     message['Subject'] = title
     
-    text = MIMEText(content)
+    text = MIMEText(content, 'html')
     message.attach(text)
 
     # Attach a file, if any
     attach_files=utils.parse_file_names(cfg['SCHEMER']['attach_files'])
-    for attach_file in attach_files:
-        with open(attach_file, 'rb') as file:
-            attachment = MIMEImage(file.read(), _subtype='png')
-            attachment.add_header(
-                'Content-Disposition', 'attachment', filename=attach_file.split('/')[-1])
-            message.attach(attachment)
+    if attach_files !=[]:
+        for attach_file in attach_files:
+            with open(attach_file, 'rb') as file:
+                attachment = MIMEImage(file.read(), _subtype='png')
+                attachment.add_header(
+                    'Content-Disposition', 'attachment', filename=attach_file.split('/')[-1])
+                message.attach(attachment)
     # Encode the message in base64
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 

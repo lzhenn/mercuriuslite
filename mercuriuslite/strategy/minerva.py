@@ -175,13 +175,19 @@ class Minerva:
         
         # portfolio performance table
         eval_table=prudentia.strategy_eval(track)
-        tb_msg=painter.table_print(eval_table,table_fmt='rst')
+        #tb_msg=painter.table_print(eval_table,table_fmt='html')
+        tb_msg=painter.dic2html(eval_table)
         #print(tb_msg)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'\n\n{track_identity}\n\n{tb_msg}') 
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{track_identity} Performance</h2>{tb_msg}') 
         # last day track
-        tb_msg=painter.table_print(track.iloc[-1],table_fmt='rst')
+        lstday_dic=track.iloc[-1].to_dict()
+        lstday_dic['accum_return']=lstday_dic['accum_return']-1
+        lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
+        
+        tb_msg=painter.dic2html(painter.fmt_dic(lstday_dic))
+        #tb_msg=painter.table_print(track.iloc[-1],table_fmt='html')
         #print(tb_msg)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'{tb_msg}')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h3>{track_identity} Last Day Status</h3>{tb_msg}')
         painter.draw_perform_fig(track, self.port_tgts, fig_fn)
         #print(track.iloc[-1])
     def _event_process(self, date):
@@ -286,8 +292,7 @@ class Minerva:
                 f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
                 f' on {date.strftime("%Y-%m-%d")}'
             utils.write_log(print_prefix+msg)
-            self.msg_dic=utils.feed_msg_body(self.msg_dic, '******MercuriusLite Operation Summary******\n\n')
-            self.msg_dic=utils.feed_msg_body(self.msg_dic, msg)
+            self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{msg}</h2>')
         else:
             return
         
@@ -406,7 +411,7 @@ class Minerva:
                     f' on {date.strftime("%Y-%m-%d")}'
                 if track_mark=='real':
                     self.msg_dic=utils.feed_msg_title(self.msg_dic, f'{tgt}:{share:.0f}@{trade_price:.2f}')
-                    self.msg_dic=utils.feed_msg_body(self.msg_dic, log_data)
+                    self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{log_data}</h2>')
                     utils.write_log(log_data+' (proposed real acc)')
                 else:
                     utils.write_log(print_prefix+log_data)

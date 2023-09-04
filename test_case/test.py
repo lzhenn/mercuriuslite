@@ -1,7 +1,8 @@
 import mercuriuslite
-mercuriuslite.copy_cfg('config.veceval.ini')
+#mercuriuslite.copy_cfg('config.veceval.ini')
 
-agent=mercuriuslite.Mercurius(cfgfn='config.veceval.ini')
+#agent=mercuriuslite.Mercurius(cfgfn='config.veceval.ini')
+agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
 #agent.as_crawler()
 #agent.crawler.fetch()
 #agent.crawler.fetch(inperiod='max')
@@ -21,6 +22,6 @@ agent=mercuriuslite.Mercurius(cfgfn='config.veceval.ini')
 #agent.as_referee()
 #agent.referee.judge()
 
-#agent.as_trader()
-#agent.trader.account_evolve()
-mercuriuslite.resend_msg(agent.cfg)
+agent.as_trader()
+agent.trader.account_evolve()
+#mercuriuslite.resend_msg(agent.cfg)

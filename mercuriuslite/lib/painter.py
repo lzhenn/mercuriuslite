@@ -306,3 +306,39 @@ def get_info(y, ybase):
 def table_print(table, table_fmt='fancy_grid'):
     from tabulate import tabulate
     return tabulate(table.items(),headers=['Metrics', 'Value'],tablefmt=table_fmt)
+
+def dic2html(table_data):
+    # Get the list of column names from the dictionary keys
+    column_names = ['Metrics', 'Value']
+    # Create the HTML table
+    table_html = '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">'
+    # Add the table header row
+    table_html += '<tr>'
+    for column_name in column_names:
+        table_html += f'<th style="font-weight: bold; padding: 8px;">{column_name}</th>'
+    table_html += '</tr>'
+    # Add the table data rows
+    for i, (k, v) in enumerate(table_data.items()):
+        table_html += '<tr>'
+        # Add alternating background colors to the table rows
+        if i % 2 == 0:
+            bg_color = '#f9f9f9'
+        else:
+            bg_color = '#ddd'
+        table_html += f'<td style="font-weight: bold; background-color: {bg_color};padding: 8px;">{k}</td>'
+        table_html += f'<td style="background-color: {bg_color};  padding: 8px;">{v}</td>'
+        table_html += '</tr>'
+    table_html += '</table>'
+    return table_html
+
+def fmt_dic(dic):
+    for k,v in dic.items():
+        fmt_str=''
+        for kw in ['value','fund','cash', 'accu_fund']:
+            if kw in k:
+                fmt_str='usd'
+        for kw in ['return','drawdown','change']:
+            if kw in k:
+                fmt_str='pct'
+        dic[k]=utils.fmt_value(v,fmt_str)
+    return dic
