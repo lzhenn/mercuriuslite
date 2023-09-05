@@ -176,7 +176,8 @@ def parse_endtime(dt_str):
         return datetime.datetime.strptime(dt_str, '%Y%m%d')
     else: 
         dt=datetime.datetime.now()
-        ymd=dt.strftime('%Y%m%d')
+        dt_us=dt+datetime.timedelta(days=-1) # eastern time
+        ymd=dt_us.strftime('%Y%m%d')
         if ymd in const.HOLIDAYS:
             dt+=datetime.timedelta(days=-1)
         if dt.weekday() == 6:
