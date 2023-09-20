@@ -75,6 +75,8 @@ class Minerva:
         
         self._load_portfolio()
         
+        self.eval_dic,self.lastday_dic={},{}
+        
         # cash flow        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
         if self.forward_flag or self.cash_flow=='real':
@@ -137,8 +139,24 @@ class Minerva:
             self.cfg['SCHEMER']['out_operation_file'], index=False)
         
     def msg_handler(self):
+        
+        # portfolio performance
+        tb_msg=painter.dic2html(self.eval_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Portfolio Performance</h2>{tb_msg}') 
+        
+        self._parse_ticker_perform()
+
+        # last day status
+        tb_msg=painter.dic2html(self.lastday_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Last Day Status</h2>{tb_msg}')
+ 
+        # ticker details
+        tb_msg=painter.dic2html(self.ticker_perform_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Ticker Performance Details</h2>{tb_msg}')
+       
         title, content=utils.form_msg(self.msg_dic)
         io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
+        
         if self.cfg['SCHEMER'].getboolean('send_msg'):
             messenger.gmail_send_message(self.cfg, title, content)
     
@@ -146,16 +164,15 @@ class Minerva:
         '''
         inspect portfolio
         '''
-        utils.write_log(f'{print_prefix}inspect portfolio...')
         if track_mark is None:
             track=self.track
-            track_identity='Scheme Portfolio'
+            track_identity='Scheme Account'
             fig_fn=utils.form_scheme_fig_fn(self.cfg)
         else:
             track=self.real_track
-            track_identity='Real Portfolio'
+            track_identity='Real Account'
             fig_fn=utils.form_scheme_fig_fn(self.cfg,suffix='real')
-
+        utils.write_log(f'{print_prefix}{track_identity} inspect portfolio...')
         track=prudentia.track_inspect(track)
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
@@ -176,18 +193,19 @@ class Minerva:
         # portfolio performance table
         eval_table=prudentia.strategy_eval(track)
         #tb_msg=painter.table_print(eval_table,table_fmt='html')
-        tb_msg=painter.dic2html(eval_table)
-        #print(tb_msg)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{track_identity} Performance</h2>{tb_msg}') 
-        # last day track
+        self.eval_dic=painter.append_dic_table(
+            self.eval_dic, eval_table, 
+            column_name=track_identity, index_name='Metrics')
+       # last day track
         lstday_dic=track.iloc[-1].to_dict()
         lstday_dic['accum_return']=lstday_dic['accum_return']-1
         lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
-        
-        tb_msg=painter.dic2html(painter.fmt_dic(lstday_dic))
-        #tb_msg=painter.table_print(track.iloc[-1],table_fmt='html')
-        #print(tb_msg)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h3>{track_identity} Last Day Status</h3>{tb_msg}')
+        lstday_dic['drawdown']=-lstday_dic['drawdown'] 
+        lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
+        lstday_dic=painter.fmt_dic(lstday_dic)
+        self.lastday_dic=painter.append_dic_table(
+            self.lastday_dic, lstday_dic,
+            column_name=track_identity, index_name='Metrics')
         painter.draw_perform_fig(track, self.port_tgts, fig_fn)
         #print(track.iloc[-1])
     def _event_process(self, date):
@@ -277,8 +295,7 @@ class Minerva:
             utils.write_log(
                     f'{print_prefix}{self.real_prefix}Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
-                    f' on {date.strftime("%Y-%m-%d")}'
-                )
+                    f' on {date.strftime("%Y-%m-%d")}')
                 
     def _on_funding(self, date):
         if date==self.dateseries[0]:
@@ -384,6 +401,32 @@ class Minerva:
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
+    def _parse_ticker_perform(self):
+        self.ticker_perform_dic={
+            'header':['Tickers', 'Holding Shares', 'Holding Value',
+                      'Accu Inflow', 'Accu Outflow', 'Accu+Hold Return']}
+        tickers=self.port_tgts
+        
+        op_df, real_acc=self.operation_df, self.real_acc
+        for ticker in tickers:
+            lastday_share=self.lastday_dic[f'{ticker}_share']
+            lastday_value=self.lastday_dic[f'{ticker}_value']
+            in_s, out_s=utils.cal_flow(op_df,ticker)
+            gain_s= float(lastday_value[0][1:])-out_s-in_s
+            in_r, out_r=utils.cal_flow(real_acc,ticker)
+            gain_r= float(lastday_value[1][1:])-out_r-in_r
+
+            self.ticker_perform_dic[f'{ticker} (S)']=[
+                lastday_share[0], lastday_value[0], 
+                utils.fmt_value(in_s), utils.fmt_value(out_s),
+                utils.fmt_value(gain_s)]
+            self.ticker_perform_dic[f'{ticker} (R)']=[
+                lastday_share[1], lastday_value[1], 
+                utils.fmt_value(in_r), utils.fmt_value(out_r),
+                utils.fmt_value(gain_r)]
+            self.lastday_dic.pop(f'{ticker}_share')
+            self.lastday_dic.pop(f'{ticker}_value')
+        #exit()
     def trade(self, date, call_from='DCA', price_type='NearOpen', track_mark=None):
         '''
         determine exact position change, for input
@@ -422,7 +465,8 @@ class Minerva:
                 track.loc[date,'cash']-=share*trade_price
                 self._feed_operation(date, tgt, share, trade_price)
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
-    
+
+            
 # ---Unit test---
 if __name__ == '__main__':
     pass

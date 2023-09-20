@@ -202,6 +202,7 @@ def draw_perform_fig(df, tgts, fig_fn):
     # Show the plot
     #plt.show()
     plt.savefig(fig_fn, bbox_inches='tight', dpi=const.DPI)
+    os.system(f'convert +dither -colors 256 {fig_fn} {fig_fn}')
 def fast_plot(oculus):
     # Time series
     ticker=oculus.ticker
@@ -262,8 +263,8 @@ def fast_plot(oculus):
         ax_histy.hlines(y=ybase.mean(), xmin=0, xmax=1, linewidth=2, color='black')       
         
     #plt.show()
-    plt.savefig(os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png'), 
-        bbox_inches='tight', dpi=const.DPI)
+    figname=os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png')
+    plt.savefig(figname, bbox_inches='tight', dpi=const.DPI)
 
 def scatter_hist(x, y, ybase, ax, ax_histy):
     # no labels
@@ -307,9 +308,20 @@ def table_print(table, table_fmt='fancy_grid'):
     from tabulate import tabulate
     return tabulate(table.items(),headers=['Metrics', 'Value'],tablefmt=table_fmt)
 
+
+def append_dic_table(dic, dic_new, column_name='Value', index_name='Index'):
+    if dic=={}:
+        dic['header']=[index_name, column_name]
+        for k,v in dic_new.items():
+            dic[k]=[v]
+    else:
+        dic['header'].append(column_name)
+        for k,v in dic_new.items():
+            dic[k].append(v)
+    return dic
 def dic2html(table_data):
     # Get the list of column names from the dictionary keys
-    column_names = ['Metrics', 'Value']
+    column_names = table_data['header']
     # Create the HTML table
     table_html = '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">'
     # Add the table header row
@@ -319,6 +331,8 @@ def dic2html(table_data):
     table_html += '</tr>'
     # Add the table data rows
     for i, (k, v) in enumerate(table_data.items()):
+        if i == 0:
+            continue
         table_html += '<tr>'
         # Add alternating background colors to the table rows
         if i % 2 == 0:
@@ -326,7 +340,8 @@ def dic2html(table_data):
         else:
             bg_color = '#ddd'
         table_html += f'<td style="font-weight: bold; background-color: {bg_color};padding: 8px;">{k}</td>'
-        table_html += f'<td style="background-color: {bg_color};  padding: 8px;">{v}</td>'
+        for itm in v:
+            table_html += f'<td style="background-color: {bg_color};  padding: 8px;">{itm}</td>'
         table_html += '</tr>'
     table_html += '</table>'
     return table_html

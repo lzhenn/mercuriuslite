@@ -209,7 +209,13 @@ def cal_trade(price, cash_in):
     cash_left=cash_in-share*price
     return share, cash_left
 
-
+def cal_flow(act_df, ticker):
+    # filter dataframe by ticker name
+    buy_df = act_df[(act_df['ticker'] == ticker) & (act_df['share'] > 0)]
+    sell_df = act_df[(act_df['ticker'] == ticker) & (act_df['share'] < 0)]
+    total_inflow = (buy_df['share'] * buy_df['price']).sum()
+    total_outflow = (sell_df['share'] * sell_df['price']).sum()
+    return total_inflow, total_outflow
 def cal_days_since_mjdown(date, drawdown, thresh=0.05):
     dates=drawdown.index
     date_pos=date
