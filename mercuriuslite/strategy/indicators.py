@@ -49,4 +49,4 @@ def ma_crossover(hist, para_lst, trunc_idx=0):
             signal[0] = 1
         else:
             signal[0] = 0
-    return signal
+    return signal, ma_short[-1], ma_long[-1]

@@ -61,12 +61,15 @@ def ma_cross_init(minerva, date):
         pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
     for idx, tgt in enumerate(minerva.port_tgts):
         idx_start=minerva.port_hist[tgt].index.searchsorted(date)
-        ma_cross=indicators.ma_crossover(
-            minerva.port_hist[tgt], minerva.paras[idx].replace(' ','').split(','), 
+        ma_para_list=minerva.paras[idx].replace(' ','').split(',')
+        ma_cross, shortlst, longlst=indicators.ma_crossover(
+            minerva.port_hist[tgt], ma_para_list, 
             trunc_idx=idx_start)
         minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.act_fund
         ma_cross=pd.DataFrame(ma_cross, index=trading_dates_ext, columns=['signal'])
         minerva.ma_cross[tgt]=ma_cross
+        minerva.ma_cross[f'{tgt}_short']=[ma_para_list[1],shortlst]
+        minerva.ma_cross[f'{tgt}_long']=[ma_para_list[2],longlst]
 def ma_cross(minerva, date, track_mark=None):
     # current track rec
     if track_mark is None:
@@ -98,12 +101,9 @@ def ma_cross(minerva, date, track_mark=None):
     if ma_flag:
         minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye, track_mark=track_mark)
    
-def ma_cross_rebalance(minerva, date, track_mark=None):
+def ma_cross_rebalance(minerva, date):
     port_dic=minerva.pos_scheme(minerva, date)
-    if track_mark is None:
-        curr_rec=minerva.track.loc[date]
-    else:
-        curr_rec=minerva.real_track.loc[date]
+    curr_rec=minerva.track.loc[date]
     action_dict = minerva.action_dict
     total_value=curr_rec['total_value']
     for tgt in minerva.port_tgts:

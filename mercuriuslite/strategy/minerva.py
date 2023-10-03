@@ -54,7 +54,7 @@ class Minerva:
             self.real_prefix=''
         elif cfg['SCHEMER'].getboolean('forward_flag'):
             self.forward_flag=True
-            self.real_prefix='**REAL TRADE**'
+            self.real_prefix='[REAL]'
             self.real_acc=io.load_real_acc(self.cfg['SCHEMER']['real_acc_file'])
             
             self.scheme_start_time=utils.parse_intime(
@@ -81,9 +81,8 @@ class Minerva:
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
         if self.forward_flag or self.cash_flow=='real':
             self.real_cash_dates=utils.real_acc_dates(self.real_acc,'cash')
-            self.cash_dates=self.real_cash_dates
-        else: 
-            self.cash_dates=utils.gen_date_intervals(
+            #self.cash_dates=self.real_cash_dates
+        self.cash_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['cash_frq'])
 
         # rebalance
@@ -236,22 +235,16 @@ class Minerva:
 
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
-            if self.forward_flag and date ==self.dateseries[-1]:
-                self._rebalance(date, track_mark='real')
             if date in self.trading_dates:    
                 self._rebalance(date)
             else:
                 self.defer_balance=True
             # skip this month DCA invest
             self.new_fund=False
-    def _rebalance(self,date,track_mark=None):
-        if track_mark is None:
-            track_rec=self.track.loc[date]
-            suffix='(proposed real acc)'
-        else:
-            track_rec=self.real_track.loc[date]
-            suffix=''
-        utils.write_log(f'{print_prefix}Proposed Rebalance signal captured on {date.strftime("%Y-%m-%d")}. {suffix}')
+    def _rebalance(self,date):
+        track_rec=self.track.loc[date]
+        utils.write_log(
+            f'{print_prefix}[PROPOSED] Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
         port_dic=self.pos_scheme(self, date)
         total_value=track_rec['total_value']
         for tgt in self.port_tgts:
@@ -259,8 +252,8 @@ class Minerva:
             self.action_dict[tgt]=total_value*port_dic[tgt]-value
         # adjust by specific scheme
         self.action_dict=getattr(
-            scheme_zoo, self.scheme_name+'_rebalance')(self, date, track_mark)
-        self.trade(date,call_from='Rebalance',track_mark=track_mark)
+            scheme_zoo, self.scheme_name+'_rebalance')(self, date)
+        self.trade(date,call_from='Rebalance')
         #print_dic = {k: round(v, 2) for k, v in port_dic.items()}
         #utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic} ')
         self.defer_balance=False 
@@ -326,7 +319,7 @@ class Minerva:
         if date==self.dateseries[0]:
             getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
         utils.write_log(
-            f'{print_prefix}Proposed Funding signal captured, current fund:'+\
+            f'{print_prefix}[PROPOSED] Funding signal captured, current fund:'+\
             f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
             f' on {date.strftime("%Y-%m-%d")}')
         
@@ -403,12 +396,14 @@ class Minerva:
 
     def _parse_ticker_perform(self):
         self.ticker_perform_dic={
-            'header':['Tickers', 'Holding Shares', 'Holding Value',
-                      'Accu Inflow', 'Accu Outflow', 'Accu+Hold Return']}
+            'header':['Tickers', 'Price', 'ShortLag', 'LongLag', 'Shares', 'Value',
+                      'AccuInflow', 'AccuOutflow', 'CurrReturn']}
         tickers=self.port_tgts
-        
+        date_now=self.dateseries[-1]
         op_df, real_acc=self.operation_df, self.real_acc
         for ticker in tickers:
+            price_rec=self.port_hist[ticker].loc[date_now]
+            price=price_rec['Close']
             lastday_share=self.lastday_dic[f'{ticker}_share']
             lastday_value=self.lastday_dic[f'{ticker}_value']
             in_s, out_s=utils.cal_flow(op_df,ticker)
@@ -416,11 +411,17 @@ class Minerva:
             in_r, out_r=utils.cal_flow(real_acc,ticker)
             gain_r= float(lastday_value[1][1:])-out_r-in_r
 
+            (ma_shortlag,shortvalue)=self.ma_cross[f'{ticker}_short']
+            (ma_longlag,longvalue)=self.ma_cross[f'{ticker}_long']
+            short_str=f'{utils.fmt_value(shortvalue)} (MA{ma_shortlag})'
+            long_str=f'{utils.fmt_value(longvalue)} (MA{ma_longlag})'
             self.ticker_perform_dic[f'{ticker} (S)']=[
+                utils.fmt_value(price),short_str, long_str,
                 lastday_share[0], lastday_value[0], 
                 utils.fmt_value(in_s), utils.fmt_value(out_s),
                 utils.fmt_value(gain_s)]
             self.ticker_perform_dic[f'{ticker} (R)']=[
+                utils.fmt_value(price), short_str, long_str,
                 lastday_share[1], lastday_value[1], 
                 utils.fmt_value(in_r), utils.fmt_value(out_r),
                 utils.fmt_value(gain_r)]
@@ -438,9 +439,11 @@ class Minerva:
         #self.risk_manage(date)
         if track_mark is None:
             track=self.track
+            msg_prefix='[PROPOSED]'
         else:
             track=self.real_track
             self.msg_dic=utils.feed_msg_title(self.msg_dic, call_from)
+            msg_prefix='[REAL]'
         #[('SPXL', -Val), ('SPY', Val)]
         act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
         for act_tgt in act_tgt_lst:
@@ -449,15 +452,13 @@ class Minerva:
             trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
             if not(share==0):
-                log_data=f'**{call_from}**Trade signal captured:{share:.0f} shares'+\
+                log_data=f'{msg_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
                     f' on {date.strftime("%Y-%m-%d")}'
                 if track_mark=='real':
                     self.msg_dic=utils.feed_msg_title(self.msg_dic, f'{tgt}:{share:.0f}@{trade_price:.2f}')
                     self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{log_data}</h2>')
-                    utils.write_log(log_data+' (proposed real acc)')
-                else:
-                    utils.write_log(print_prefix+log_data)
+                utils.write_log(print_prefix+log_data)
 
                 track.loc[date,f'{tgt}_share']+=share
                 track.loc[date,f'{tgt}_value']+=share*trade_price
