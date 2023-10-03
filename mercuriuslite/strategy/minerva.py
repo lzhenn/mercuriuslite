@@ -156,7 +156,7 @@ class Minerva:
         # operation records
         tb_msg=painter.table_print(
             self.operation_df.sort_values(by='Date',ascending=False),table_fmt='html')
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schmer Operations</h2>{tb_msg}')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schemer Operations</h2>{tb_msg}')
         tb_msg=painter.table_print(
             self.real_acc.sort_values(by='Date',ascending=False),table_fmt='html')
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
