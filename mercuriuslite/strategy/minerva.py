@@ -153,8 +153,18 @@ class Minerva:
         tb_msg=painter.dic2html(self.ticker_perform_dic)
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Ticker Performance Details</h2>{tb_msg}')
        
+        # operation records
+        tb_msg=painter.table_print(
+            self.operation_df.sort_values(by='Date',ascending=False),table_fmt='html')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schmer Operations</h2>{tb_msg}')
+        tb_msg=painter.table_print(
+            self.real_acc.sort_values(by='Date',ascending=False),table_fmt='html')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
+        
+        # form msg all
         title, content=utils.form_msg(self.msg_dic)
         io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
+        
         
         if self.cfg['SCHEMER'].getboolean('send_msg'):
             messenger.gmail_send_message(self.cfg, title, content)
@@ -191,7 +201,6 @@ class Minerva:
         
         # portfolio performance table
         eval_table=prudentia.strategy_eval(track)
-        #tb_msg=painter.table_print(eval_table,table_fmt='html')
         self.eval_dic=painter.append_dic_table(
             self.eval_dic, eval_table, 
             column_name=track_identity, index_name='Metrics')

@@ -306,7 +306,7 @@ def get_info(y, ybase):
 
 def table_print(table, table_fmt='fancy_grid'):
     from tabulate import tabulate
-    return tabulate(table.items(),headers=['Metrics', 'Value'],tablefmt=table_fmt)
+    return tabulate(table,headers='keys',tablefmt=table_fmt)
 
 
 def append_dic_table(dic, dic_new, column_name='Value', index_name='Index'):
