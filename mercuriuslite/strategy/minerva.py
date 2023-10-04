@@ -136,86 +136,15 @@ class Minerva:
             self.msg_handler()
         self.operation_df.to_csv(
             self.cfg['SCHEMER']['out_operation_file'], index=False)
-        
-    def msg_handler(self):
-        
-        # portfolio performance
-        tb_msg=painter.dic2html(self.eval_dic)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Portfolio Performance</h2>{tb_msg}') 
-        
-        self._parse_ticker_perform()
-
-        # last day status
-        tb_msg=painter.dic2html(self.lastday_dic)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Last Day Status</h2>{tb_msg}')
- 
-        # ticker details
-        tb_msg=painter.dic2html(self.ticker_perform_dic)
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Ticker Performance Details</h2>{tb_msg}')
-       
-        # operation records
-        tb_msg=painter.table_print(
-            self.operation_df.sort_values(by='Date',ascending=False),table_fmt='html')
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schemer Operations</h2>{tb_msg}')
-        tb_msg=painter.table_print(
-            self.real_acc.sort_values(by='Date',ascending=False),table_fmt='html')
-        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
-        
-        # form msg all
-        title, content=utils.form_msg(self.msg_dic)
-        io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
-        
-        
-        if self.cfg['SCHEMER'].getboolean('send_msg'):
-            messenger.gmail_send_message(self.cfg, title, content)
     
-    def inspect(self,track_mark=None):
-        '''
-        inspect portfolio
-        '''
-        if track_mark is None:
-            track=self.track
-            track_identity='Scheme Account'
-            fig_fn=utils.form_scheme_fig_fn(self.cfg)
-        else:
-            track=self.real_track
-            track_identity='Real Account'
-            fig_fn=utils.form_scheme_fig_fn(self.cfg,suffix='real')
-        utils.write_log(f'{print_prefix}{track_identity} inspect portfolio...')
-        track=prudentia.track_inspect(track)
-        track['drawdown'].where(
-            track['drawdown']>-track['fund_change'], other=-track['fund_change'],
-            inplace=True)
+    def _init_portfolio(self):
+        # build portfolio track
+        date_series=self.dateseries
+        self.track = utils.init_track(date_series, self.port_tgts)
+        if self.forward_flag:
+            self.real_track=utils.init_track(date_series, self.port_tgts)
 
-        # baseline return
-        track['baseline_return']=track['accum_return']
-        idx_start=self.basehist.index.searchsorted(self.scheme_start_time)
-        base_value=self.basehist.iloc[idx_start]['Close']
-        mkt_value=base_value       
-        for date in self.dateseries:
-            if date in self.trading_dates:
-                mkt_value=self.basehist.loc[date]['Close']
-            track.loc[date, 'baseline_return']=mkt_value/base_value
-        track['baseline_drawdown'] = (
-            track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
-        
-        # portfolio performance table
-        eval_table=prudentia.strategy_eval(track)
-        self.eval_dic=painter.append_dic_table(
-            self.eval_dic, eval_table, 
-            column_name=track_identity, index_name='Metrics')
-       # last day track
-        lstday_dic=track.iloc[-1].to_dict()
-        lstday_dic['accum_return']=lstday_dic['accum_return']-1
-        lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
-        lstday_dic['drawdown']=-lstday_dic['drawdown'] 
-        lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
-        lstday_dic=painter.fmt_dic(lstday_dic)
-        self.lastday_dic=painter.append_dic_table(
-            self.lastday_dic, lstday_dic,
-            column_name=track_identity, index_name='Metrics')
-        painter.draw_perform_fig(track, self.port_tgts, fig_fn)
-        #print(track.iloc[-1])
+   
     def _event_process(self, date):
         '''
         listen to events: 
@@ -232,16 +161,51 @@ class Minerva:
         if self.forward_flag:
             self._on_rolling(date,track_mark='real')
 
-    def _init_portfolio(self):
-        # build portfolio track
-        date_series=self.dateseries
-        self.track = utils.init_track(date_series, self.port_tgts)
-        if self.forward_flag:
-            self.real_track=utils.init_track(date_series, self.port_tgts)
-
     def _on_kickoff(self, date):
         self.NRDR=self.norisk_scheme(self,date)
+    
+    def _on_funding(self, date):
+        if date==self.dateseries[0]:
+            act_flow=self.init_fund
+            getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
+        elif date in self.cash_dates:
+            act_flow=self.fund_scheme(self, date)
+        else:
+            return
 
+        # deal with new funding 
+        self._feed_operation(date, 'cash', np.nan, act_flow)
+        self.track.loc[date, 'cash']+=act_flow
+        self.track.loc[date, 'total_value']+=act_flow
+        self.track.loc[date, 'accu_fund']+=act_flow
+        
+        self.new_fund=True
+        # new funding 
+        self.act_fund=act_flow
+        msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
+            f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+            f' on {date.strftime("%Y-%m-%d")}'
+        utils.write_log(print_prefix+msg_log)
+        
+        # deal with real account
+        if self.forward_flag:
+            # forward feed lastday msg
+            if date==self.dateseries[-1]:
+                self.msg_dic=utils.feed_msg_title(
+                    self.msg_dic, 'CASH_IN'+utils.fmt_value(act_flow))
+                self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{msg_log}</h2>')
+ 
+            if date in self.real_cash_dates:
+                real_flow=scheme_zoo.fund_real(self, date)
+                self.real_act_fund=real_flow
+                self.real_track.loc[date, 'cash']+=real_flow
+                self.real_track.loc[date, 'total_value']+=real_flow
+                self.real_track.loc[date, 'accu_fund']+=real_flow
+                utils.write_log(
+                    f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
+                    f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+                    f' on {date.strftime("%Y-%m-%d")}')
+    
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    
@@ -250,6 +214,7 @@ class Minerva:
                 self.defer_balance=True
             # skip this month DCA invest
             self.new_fund=False
+    
     def _rebalance(self,date):
         track_rec=self.track.loc[date]
         utils.write_log(
@@ -268,87 +233,19 @@ class Minerva:
         self.defer_balance=False 
        
     def _on_trade(self, date):
+        #if (date in self.trading_dates):
         if (date in self.trading_dates):
-        #if (date in self.trading_dates and self.new_fund):
-            self.strategy(self, date)
-            if date != self.dateseries[-1]:
-                self.new_fund=False
+            self.strategy(self, date) # even without newfund, strategy-based trading exists 
+            self.new_fund=False
         if self.forward_flag: 
             if date in self.real_acc['Date'].values:
-                self._trade_real(date)
-            if date == self.dateseries[-1]:
-                self.strategy(self, date, track_mark='real')
-            
-    def _trade_real(self,date):
-        track=self.real_track
-        real_acc=self.real_acc
-        trade_rec=real_acc[real_acc['Date']==date]
-        for row in trade_rec.itertuples():
-            tgt=row.ticker
-            if tgt == 'cash':
-                continue
-            share=row.share
-            trade_price=row.price
-            track.loc[date,f'{tgt}_share']+=share
-            track.loc[date,f'{tgt}_value']+=share*trade_price
-            track.loc[date,'port_value']+=share*trade_price
-            track.loc[date,'cash']-=share*trade_price
-            track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
-            utils.write_log(
-                    f'{print_prefix}{self.real_prefix}Trade signal captured:{share:.0f} shares'+\
-                    f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
-                    f' on {date.strftime("%Y-%m-%d")}')
-                
-    def _on_funding(self, date):
-        if date==self.dateseries[0]:
-            act_flow=self.init_fund
-        elif date in self.cash_dates:
-            act_flow=self.fund_scheme(self, date)
-        elif date == self.dateseries[-1] and date.day==1:
-            act_flow=scheme_zoo.fund_fixed(self, date)
-            self.msg_dic=utils.feed_msg_title(self.msg_dic, 'CASH_IN'+utils.fmt_value(act_flow))
-            msg=f'***CASH_IN***Funding signal captured, current fund:'+\
-                f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-                f' on {date.strftime("%Y-%m-%d")}'
-            utils.write_log(print_prefix+msg)
-            self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{msg}</h2>')
-        else:
-            return
-        
-        self._feed_operation(date, 'cash', np.nan, act_flow)
-        self.track.loc[date, 'cash']+=act_flow
-        self.track.loc[date, 'total_value']+=act_flow
-        self.track.loc[date, 'accu_fund']+=act_flow
-        
-        self.new_fund=True
-        # new funding 
-        self.act_fund=act_flow
-        
-        # init trade scheme
-        if date==self.dateseries[0]:
-            getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
-        utils.write_log(
-            f'{print_prefix}[PROPOSED] Funding signal captured, current fund:'+\
-            f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-            f' on {date.strftime("%Y-%m-%d")}')
-        
-        
-        if self.forward_flag: 
-            if date in self.real_cash_dates:
-                real_flow=scheme_zoo.fund_real(self, date)
-                self.real_act_fund=real_flow
-                self.real_track.loc[date, 'cash']+=real_flow
-                self.real_track.loc[date, 'total_value']+=real_flow
-                self.real_track.loc[date, 'accu_fund']+=real_flow
-                utils.write_log(
-                    f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
-                    f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-                    f' on {date.strftime("%Y-%m-%d")}')
-            
+                self.trade_real(date)
+           
     def _feed_operation(self, date, tgt, share, price):
         date=date.strftime("%Y%m%d")
         new_row = {'Date': date, 'ticker': tgt, 'share': share, 'price': price}
         self.operation_df=self.operation_df.append(new_row, ignore_index=True)
+    
     def _on_rolling(self, date, track_mark=None): 
         '''
         rolling the whole pipeline 
@@ -437,7 +334,75 @@ class Minerva:
             self.lastday_dic.pop(f'{ticker}_share')
             self.lastday_dic.pop(f'{ticker}_value')
         #exit()
-    def trade(self, date, call_from='DCA', price_type='NearOpen', track_mark=None):
+    def trade_real(self,date):
+        track=self.real_track
+        real_acc=self.real_acc
+        trade_rec=real_acc[real_acc['Date']==date]
+        for row in trade_rec.itertuples():
+            tgt=row.ticker
+            if tgt == 'cash':
+                continue
+            share=row.share
+            trade_price=row.price
+            track.loc[date,f'{tgt}_share']+=share
+            track.loc[date,f'{tgt}_value']+=share*trade_price
+            track.loc[date,'port_value']+=share*trade_price
+            track.loc[date,'cash']-=share*trade_price
+            track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+            utils.write_log(
+                    f'{print_prefix}{self.real_prefix}Trade signal captured:{share:.0f} shares'+\
+                    f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
+                    f' on {date.strftime("%Y-%m-%d")}')
+    
+    def inspect(self,track_mark=None):
+        '''
+        inspect portfolio
+        '''
+        if track_mark is None:
+            track=self.track
+            track_identity='Scheme Account'
+            fig_fn=utils.form_scheme_fig_fn(self.cfg)
+        else:
+            track=self.real_track
+            track_identity='Real Account'
+            fig_fn=utils.form_scheme_fig_fn(self.cfg,suffix='real')
+        utils.write_log(f'{print_prefix}{track_identity} inspect portfolio...')
+        track=prudentia.track_inspect(track)
+        track['drawdown'].where(
+            track['drawdown']>-track['fund_change'], other=-track['fund_change'],
+            inplace=True)
+
+        # baseline return
+        track['baseline_return']=track['accum_return']
+        idx_start=self.basehist.index.searchsorted(self.scheme_start_time)
+        base_value=self.basehist.iloc[idx_start]['Close']
+        mkt_value=base_value       
+        for date in self.dateseries:
+            if date in self.trading_dates:
+                mkt_value=self.basehist.loc[date]['Close']
+            track.loc[date, 'baseline_return']=mkt_value/base_value
+        track['baseline_drawdown'] = (
+            track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
+        
+        # portfolio performance table
+        eval_table=prudentia.strategy_eval(track)
+        self.eval_dic=painter.append_dic_table(
+            self.eval_dic, eval_table, 
+            column_name=track_identity, index_name='Metrics')
+       # last day track
+        lstday_dic=track.iloc[-1].to_dict()
+        lstday_dic['accum_return']=lstday_dic['accum_return']-1
+        lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
+        lstday_dic['drawdown']=-lstday_dic['drawdown'] 
+        lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
+        lstday_dic=painter.fmt_dic(lstday_dic)
+        self.lastday_dic=painter.append_dic_table(
+            self.lastday_dic, lstday_dic,
+            column_name=track_identity, index_name='Metrics')
+        painter.draw_perform_fig(track, self.port_tgts, fig_fn)
+        #print(track.iloc[-1])
+
+    def trade(self, date, call_from='DCA', price_type='NearOpen'):
         '''
         determine exact position change, for input
         action_dict= 
@@ -446,13 +411,8 @@ class Minerva:
         positive for buy, negative for sell 
         '''
         #self.risk_manage(date)
-        if track_mark is None:
-            track=self.track
-            msg_prefix='[PROPOSED]'
-        else:
-            track=self.real_track
-            self.msg_dic=utils.feed_msg_title(self.msg_dic, call_from)
-            msg_prefix='[REAL]'
+        track=self.track
+        msg_prefix='[PROPOSED]'
         #[('SPXL', -Val), ('SPY', Val)]
         act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
         for act_tgt in act_tgt_lst:
@@ -464,9 +424,14 @@ class Minerva:
                 log_data=f'{msg_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
                     f' on {date.strftime("%Y-%m-%d")}'
-                if track_mark=='real':
-                    self.msg_dic=utils.feed_msg_title(self.msg_dic, f'{tgt}:{share:.0f}@{trade_price:.2f}')
-                    self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{log_data}</h2>')
+                
+                # forward feed lastday msg
+                if date==self.dateseries[-1] and self.forward_flag:
+                    self.msg_dic=utils.feed_msg_title(
+                        self.msg_dic, f'{tgt}:{share:.0f}@{trade_price:.2f}')
+                    self.msg_dic=utils.feed_msg_body(
+                        self.msg_dic, f'<h2>{log_data}</h2>')
+                
                 utils.write_log(print_prefix+log_data)
 
                 track.loc[date,f'{tgt}_share']+=share
@@ -475,6 +440,38 @@ class Minerva:
                 track.loc[date,'cash']-=share*trade_price
                 self._feed_operation(date, tgt, share, trade_price)
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+    def msg_handler(self):
+        
+        # portfolio performance
+        tb_msg=painter.dic2html(self.eval_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Portfolio Performance</h2>{tb_msg}') 
+        
+        self._parse_ticker_perform()
+
+        # last day status
+        tb_msg=painter.dic2html(self.lastday_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Last Day Status</h2>{tb_msg}')
+ 
+        # ticker details
+        tb_msg=painter.dic2html(self.ticker_perform_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Ticker Performance Details</h2>{tb_msg}')
+       
+        # operation records
+        tb_msg=painter.table_print(
+            self.operation_df.sort_values(by='Date',ascending=False),table_fmt='html')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schemer Operations</h2>{tb_msg}')
+        tb_msg=painter.table_print(
+            self.real_acc.sort_values(by='Date',ascending=False),table_fmt='html')
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
+        
+        # form msg all
+        title, content=utils.form_msg(self.msg_dic)
+        io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
+        
+        
+        if self.cfg['SCHEMER'].getboolean('send_msg'):
+            messenger.gmail_send_message(self.cfg, title, content)
+    
 
             
 # ---Unit test---

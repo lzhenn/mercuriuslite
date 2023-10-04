@@ -33,6 +33,7 @@ def ma_crossover(hist, para_lst, trunc_idx=0):
     if pclose:
         signal=np.concatenate(([0.0], signal))
         diff=np.concatenate(([0.0], diff))
+        trunc_idx+=1
     # tranction from given start idx
     signal=signal[trunc_idx:]
     diff=diff[trunc_idx:]

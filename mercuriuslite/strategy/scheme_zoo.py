@@ -57,26 +57,22 @@ def ma_cross_init(minerva, date):
     minerva.ma_cross={}
     trading_dates=minerva.trading_dates
     # pseudo date for realtime trading
-    trading_dates_ext=trading_dates.append(
-        pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
+    #trading_dates_ext=trading_dates.append(
+    #    pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
     for idx, tgt in enumerate(minerva.port_tgts):
         idx_start=minerva.port_hist[tgt].index.searchsorted(date)
         ma_para_list=minerva.paras[idx].replace(' ','').split(',')
         ma_cross, shortlst, longlst=indicators.ma_crossover(
             minerva.port_hist[tgt], ma_para_list, 
             trunc_idx=idx_start)
-        minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.act_fund
-        ma_cross=pd.DataFrame(ma_cross, index=trading_dates_ext, columns=['signal'])
+        minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.init_fund
+        ma_cross=pd.DataFrame(ma_cross, index=trading_dates, columns=['signal'])
         minerva.ma_cross[tgt]=ma_cross
         minerva.ma_cross[f'{tgt}_short']=[ma_para_list[1],shortlst]
         minerva.ma_cross[f'{tgt}_long']=[ma_para_list[2],longlst]
-def ma_cross(minerva, date, track_mark=None):
+def ma_cross(minerva, date):
     # current track rec
-    if track_mark is None:
-        curr_rec=minerva.track.loc[date]
-    else:
-        curr_rec=minerva.real_track.loc[date]
-
+    curr_rec=minerva.track.loc[date]
     price_tpye=minerva.price_type
     ma_flag=False
     for tgt in minerva.port_tgts:
@@ -96,10 +92,10 @@ def ma_cross(minerva, date, track_mark=None):
             for idx,tgt in enumerate(minerva.port_tgts):
                 if port_flag[idx]:
                     minerva.action_dict[tgt]+=minerva.act_fund/nexpose
-        minerva.trade(date, call_from='DCA',price_type=price_tpye, track_mark=track_mark)
+        minerva.trade(date, call_from='DCA',price_type=price_tpye)
         return
     if ma_flag:
-        minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye, track_mark=track_mark)
+        minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye)
    
 def ma_cross_rebalance(minerva, date):
     port_dic=minerva.pos_scheme(minerva, date)
