@@ -11,9 +11,10 @@ def new_high_defense(hist, date):
         defense=0.5*const.CASH_IN_HAND
     return defense
 
-def ma_crossover(hist, para_lst, trunc_idx=0):
+def ma_crossover(hist, para_lst, trunc_idx=0, pseudo_flag=False):
     '''
     calculate MA crossover
+    pseudo_flag: True if use pseudo trading day data
     returns: -1: downward, 0, no signal, 1: upward
     '''
     pclose=False
@@ -25,6 +26,9 @@ def ma_crossover(hist, para_lst, trunc_idx=0):
     ts=hist[tgt_price]
     ma_short=mathlib.ma(ts, shortlag)
     ma_long=mathlib.ma(ts, longlag)
+    if pseudo_flag:
+        ma_short[-1],ma_long[-1]=ma_short[-2],ma_long[-2]
+
     diff=ma_short-ma_long
     # signal is a vector of -1, 0, 1
     signal=np.sign(np.diff(np.sign(diff), prepend=0.0))

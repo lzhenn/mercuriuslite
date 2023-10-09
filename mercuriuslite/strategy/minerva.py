@@ -102,13 +102,13 @@ class Minerva:
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
             utils.write_log(f'{print_prefix}load {tgt}')
-            self.port_hist[tgt]=io.load_hist(self.db_path, tgt,add_pseudo=True)
+            self.port_hist[tgt]=io.load_hist(self.db_path, tgt,add_pseudo=self.forward_flag)
             #self.port_model[tgt], self.port_meta[tgt]=io.load_model(
             #    self.model_path, model_name, tgt, baseline=False)
         trading_dates=self.port_hist[self.port_tgts[0]].index
         idx_start=trading_dates.searchsorted(self.scheme_start_time)
         self.trading_dates=trading_dates[idx_start:]
-        self.basehist=io.load_hist(self.db_path, self.baseticker, add_pseudo=True)
+        self.basehist=io.load_hist(self.db_path, self.baseticker, add_pseudo=self.forward_flag)
         self.basehist['drawdown'] = (
             self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
     def account_evolve(self):
@@ -165,32 +165,33 @@ class Minerva:
         self.NRDR=self.norisk_scheme(self,date)
     
     def _on_funding(self, date):
+        act_flow=0
+        
         if date==self.dateseries[0]:
             act_flow=self.init_fund
             getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(self, date)
-        else:
-            return
-
-        # deal with new funding 
-        self._feed_operation(date, 'cash', np.nan, act_flow)
-        self.track.loc[date, 'cash']+=act_flow
-        self.track.loc[date, 'total_value']+=act_flow
-        self.track.loc[date, 'accu_fund']+=act_flow
         
-        self.new_fund=True
-        # new funding 
-        self.act_fund=act_flow
-        msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
-            f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-            f' on {date.strftime("%Y-%m-%d")}'
-        utils.write_log(print_prefix+msg_log)
-        
+        if act_flow>0:
+            # deal with new funding 
+            self._feed_operation(date, 'cash', np.nan, act_flow)
+            self.track.loc[date, 'cash']+=act_flow
+            self.track.loc[date, 'total_value']+=act_flow
+            self.track.loc[date, 'accu_fund']+=act_flow
+            
+            self.new_fund=True
+            # new funding 
+            self.act_fund=act_flow
+            msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
+                f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+                f' on {date.strftime("%Y-%m-%d")}'
+            utils.write_log(print_prefix+msg_log)
+            
         # deal with real account
         if self.forward_flag:
             # forward feed lastday msg
-            if date==self.dateseries[-1]:
+            if date==self.dateseries[-1] and self.new_fund:
                 self.msg_dic=utils.feed_msg_title(
                     self.msg_dic, 'CASH_IN'+utils.fmt_value(act_flow))
                 self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{msg_log}</h2>')
@@ -203,7 +204,7 @@ class Minerva:
                 self.real_track.loc[date, 'accu_fund']+=real_flow
                 utils.write_log(
                     f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
-                    f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
+                    f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(real_flow)})'+\
                     f' on {date.strftime("%Y-%m-%d")}')
     
     def _on_rebalance(self, date):
@@ -305,10 +306,14 @@ class Minerva:
             'header':['Tickers', 'Price', 'ShortLag', 'LongLag', 'Shares', 'Value',
                       'AccuInflow', 'AccuOutflow', 'CurrReturn']}
         tickers=self.port_tgts
-        date_now=self.dateseries[-1]
+        if self.forward_flag:
+            date_now=self.dateseries[-2]
+        else:
+            date_now=self.dateseries[-1]
         op_df, real_acc=self.operation_df, self.real_acc
         for ticker in tickers:
             price_rec=self.port_hist[ticker].loc[date_now]
+            #print(self.port_hist[ticker].loc[date_now])
             price=price_rec['Close']
             lastday_share=self.lastday_dic[f'{ticker}_share']
             lastday_value=self.lastday_dic[f'{ticker}_value']

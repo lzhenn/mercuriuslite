@@ -48,6 +48,8 @@ def buy_and_hold(minerva, date):
 
 def buy_and_hold_rebalance(minerva, date):
     return minerva.action_dict
+
+
 # ------------------------MA_CROSS------------------------
 def ma_cross_init(minerva, date):
     minerva.paras=minerva.cfg['S_ma_cross']['paras'].replace(' ','').split('/')
@@ -56,6 +58,7 @@ def ma_cross_init(minerva, date):
     minerva.ticker_assets={}
     minerva.ma_cross={}
     trading_dates=minerva.trading_dates
+    pseudo_flag=minerva.forward_flag
     # pseudo date for realtime trading
     #trading_dates_ext=trading_dates.append(
     #    pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
@@ -64,12 +67,13 @@ def ma_cross_init(minerva, date):
         ma_para_list=minerva.paras[idx].replace(' ','').split(',')
         ma_cross, shortlst, longlst=indicators.ma_crossover(
             minerva.port_hist[tgt], ma_para_list, 
-            trunc_idx=idx_start)
+            trunc_idx=idx_start, pseudo_flag=pseudo_flag)
         minerva.ticker_assets[tgt]=port_dic[tgt]*minerva.init_fund
         ma_cross=pd.DataFrame(ma_cross, index=trading_dates, columns=['signal'])
         minerva.ma_cross[tgt]=ma_cross
         minerva.ma_cross[f'{tgt}_short']=[ma_para_list[1],shortlst]
         minerva.ma_cross[f'{tgt}_long']=[ma_para_list[2],longlst]
+
 def ma_cross(minerva, date):
     # current track rec
     curr_rec=minerva.track.loc[date]
