@@ -241,6 +241,8 @@ def determ_price(price_rec, price_type):
 
 def fmt_value(val, vtype='usd', dec=2):
     # vtype='usd','pct'
+    if issubclass(type(val), str):
+        return val
     if vtype=='usd':
         fmt_val=f'${val:.2f}'
     elif vtype=='pct':

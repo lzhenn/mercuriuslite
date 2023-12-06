@@ -135,7 +135,7 @@ def draw_perform_fig(df, tgts, fig_fn):
             continue
         ax[2].axvspan(start_date, end_date, alpha=0.3, color='grey')
         x,y=start_date,-max_lv
-        ax[2].text(x, y-0.05, 
+        ax[2].text(x, y/2, 
             f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
             ha='left', va='bottom', fontsize=const.SM_SIZE,
             weight='bold')

@@ -318,8 +318,10 @@ class Minerva:
             lastday_share=self.lastday_dic[f'{ticker}_share']
             lastday_value=self.lastday_dic[f'{ticker}_value']
             in_s, out_s=utils.cal_flow(op_df,ticker)
+            #gain_s= float(lastday_value[0])-out_s-in_s
             gain_s= float(lastday_value[0][1:])-out_s-in_s
             in_r, out_r=utils.cal_flow(real_acc,ticker)
+            #gain_r= float(lastday_value[1])-out_r-in_r
             gain_r= float(lastday_value[1][1:])-out_r-in_r
 
             (ma_shortlag,shortvalue)=self.ma_cross[f'{ticker}_short']
@@ -399,7 +401,10 @@ class Minerva:
         lstday_dic['accum_return']=lstday_dic['accum_return']-1
         lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
         lstday_dic['drawdown']=-lstday_dic['drawdown'] 
-        lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
+        if lstday_dic['baseline_drawdown']>0:
+            lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
+        else:
+            lstday_dic['baseline_drawdown']='N/A'
         lstday_dic=painter.fmt_dic(lstday_dic)
         self.lastday_dic=painter.append_dic_table(
             self.lastday_dic, lstday_dic,

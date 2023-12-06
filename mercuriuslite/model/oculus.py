@@ -21,7 +21,7 @@ class Oculus:
         self.Ytgt, self.Ylead=utils.parse_lead(cfg['PREDICTOR']['Ytgt'])
         if self.model_name =='plainhist':
             self.Ylead=0
-        self.Xnames=cfg['PREDICTOR']['autoXnames']
+        self.Xnames=cfg['PREDICTOR']['Xnames']
 
         # Train
         self.train_start_time=utils.parse_intime(
@@ -54,11 +54,11 @@ class Oculus:
         utils.write_log(f'{print_prefix}Mercurius.Oculus.predict()')
         hist_Y, self.date_series =io.load_y(
             self.Yfile, self.Ytgt, 
-            end_time=self.pred_init_time, call_from='predict')
+            end_time=self.pred_init_time)
         self.pred_init_time=self.date_series[-1]
         X_pred_series=io.load_x(
             hist_Y, self.Xfile, self.Xnames, 
-            end_time=self.pred_init_time, call_from='predict')
+            end_time=self.pred_init_time)
         self.X_pred=X_pred_series[-1]
         model_predict = getattr(zoo, f'{self.model_name}_predict')
         self.determin, self.prob = model_predict(self)

@@ -29,7 +29,6 @@ def load_xy(
         Xfile, Xnames, Yfile, Ytgt, Ylead, start_time='0', end_time='0'):
     
     Y, date_series =load_y(Yfile, Ytgt, start_time, end_time)
-    
     X =load_x(Y, Xfile, Xnames, start_time, end_time)
     
     if Ylead >0: 
@@ -72,7 +71,7 @@ def match_xy(X,Y,lead_days, date_series):
     X=X[:-lead_days]
     date_series=date_series[lead_days:]
     return X, Y, date_series
-def load_y(Yfile, Ytgt, start_time='0', end_time='0', call_from='train'):
+def load_y(Yfile, Ytgt, start_time='0', end_time='0'):
     ''' select y according to prescribed method '''
     lb_all=pd.read_csv(Yfile, 
         parse_dates=True, date_parser=date_parser, index_col='Date')
@@ -84,15 +83,18 @@ def load_y(Yfile, Ytgt, start_time='0', end_time='0', call_from='train'):
     date_series=lb_all[start_time:end_time].index
     return Y, date_series 
 
-def load_x(Y, Xfile, Xnames, start_time='0', end_time='0', call_from='train'):
+def load_x(Y, Xfile, Xnames, start_time='0', end_time='0'):
     ''' load feature lib '''
     if Xfile == 'na':
-        X=gen_auto_x(Y, Xnames)
+        X=gen_deriv(Y, Xnames)
+    else:
+        X, _ =load_y(Xfile, Xnames, start_time, end_time)
     return X
-def gen_auto_x(Y, Xnames):
-    Xnames=Xnames.replace(' ','').split(',')
-    X = np.zeros((len(Y), len(Xnames)))
-    for i, name in enumerate(Xnames):
+def gen_deriv(Y, driv_names):
+    ''' generate derivative features/labels '''
+    driv_names=driv_names.replace(' ','').split(',')
+    X = np.zeros((len(Y), len(driv_names)))
+    for i, name in enumerate(driv_names):
         k = int(name.split('_')[1])
         if name.startswith('mtm_'):
             X[k:, i] = (Y[k:] - Y[:-k])/Y[k:]
@@ -103,7 +105,7 @@ def gen_auto_x(Y, Xnames):
         elif name.startswith('bollpct_'): 
             X[:, i] = mathlib.bollpct(Y, k)
         else:
-            raise ValueError('Invalid feature name: {}'.format(name))
+            raise ValueError(f'Invalid derivative name: {name}')
     return X
 
 def select_x(self, flib, call_from):

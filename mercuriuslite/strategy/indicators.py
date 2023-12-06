@@ -28,19 +28,15 @@ def ma_crossover(hist, para_lst, trunc_idx=0, pseudo_flag=False):
     ma_long=mathlib.ma(ts, longlag)
     if pseudo_flag:
         ma_short[-1],ma_long[-1]=ma_short[-2],ma_long[-2]
-
     diff=ma_short-ma_long
+    
     # signal is a vector of -1, 0, 1
     signal=np.sign(np.diff(np.sign(diff), prepend=0.0))
     
-    # if use previous trading day close, avoid future signal in trading
-    if pclose:
-        signal=np.concatenate(([0.0], signal))
-        diff=np.concatenate(([0.0], diff))
-        trunc_idx+=1
     # tranction from given start idx
     signal=signal[trunc_idx:]
     diff=diff[trunc_idx:]
+   
     # set initial
     # Find the index of the first nonzero value in the signal array
     try:
@@ -54,4 +50,8 @@ def ma_crossover(hist, para_lst, trunc_idx=0, pseudo_flag=False):
             signal[0] = 1
         else:
             signal[0] = 0
+    # if use previous trading day close, avoid future signal in trading
+    if pclose:
+        signal=np.concatenate(([0.0], signal[:-1]))
+        diff=np.concatenate(([0.0], diff[:-1]))
     return signal, ma_short[-1], ma_long[-1]

@@ -73,7 +73,6 @@ def ma_cross_init(minerva, date):
         minerva.ma_cross[tgt]=ma_cross
         minerva.ma_cross[f'{tgt}_short']=[ma_para_list[1],shortlst]
         minerva.ma_cross[f'{tgt}_long']=[ma_para_list[2],longlst]
-
 def ma_cross(minerva, date):
     # current track rec
     curr_rec=minerva.track.loc[date]

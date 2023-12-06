@@ -2,7 +2,7 @@ import mercuriuslite
 #mercuriuslite.copy_cfg('config.veceval.ini')
 
 #agent=mercuriuslite.Mercurius(cfgfn='config.veceval.ini')
-agent=mercuriuslite.Mercurius(cfgfn='config.ma_cross.ini')
+agent=mercuriuslite.Mercurius(cfgfn='config.schemer.ini')
 #agent.as_crawler()
 #agent.crawler.fetch()
 #agent.crawler.fetch(inperiod='max')

@@ -11,6 +11,7 @@
 # ---imports---
 import numpy as np
 from ..lib import utils, io, mathlib
+from scipy.stats import linregress as linreg
 # ---Module regime consts and variables---
 print_prefix='model.zoo>>'
 
@@ -64,6 +65,21 @@ def svpdf_predict(oculus):
     return determ, prob   
 # ------------------------SVPDF------------------------
 
+
+# ------------------------REGRESSION------------------------
+def linregress(oculus):
+    utils.write_log(f'{print_prefix}linregress Training...')    
+    X, Y=oculus.X_train, oculus.Y_train
+    res = linreg(X, y=Y)
+    print(f"R-squared: {res.rvalue**2:.6f}")
+    print(res.intercept, res.intercept_stderr)
+
+def linregress_archive(oculus):
+    io.savmatR(oculus)
+
+def linregress_predict(oculus):
+    return 0, 0
+# ------------------------REGRESSION------------------------
 
 # ----------COMMON FUNCTIONS----------
 

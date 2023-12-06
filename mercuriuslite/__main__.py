@@ -48,7 +48,6 @@ class Mercurius:
         const.init(self.cfg)
         
         utils.write_log('Mercurius Initiation Done.')
-
     def as_crawler(self):
         from .lib import crawler
         self.crawler=crawler.Andariel(self)
@@ -118,4 +117,5 @@ def resend_msg(cfg):
     title=msg_dic['title'].replace(predate,date)
     content=msg_dic['msg_body'].replace(predate,date)
     messenger.gmail_send_message(cfg, title, content)
-    
+
+
