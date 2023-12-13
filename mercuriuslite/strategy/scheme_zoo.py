@@ -85,6 +85,8 @@ def ma_cross(minerva, date):
             ma_flag=True
         if signal == -1:
             minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
+        if signal == 1 and len(minerva.port_tgts)==1:
+            minerva.ticker_assets[tgt]=curr_rec['total_value']
         minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
     if minerva.new_fund:
         port_flag=[
@@ -113,6 +115,60 @@ def ma_cross_rebalance(minerva, date):
         else:
             action_dict[tgt]=0
     return action_dict
+# ------------------------GRID_TRADING------------------------
+def grid_trading_init(minerva, date):
+    gridlist=minerva.cfg['S_grid_trading']['grid'].replace(' ','').split('/')
+    minerva.price_type=minerva.cfg['S_grid_trading']['trade_price_type']
+    minerva.grid=[]
+    for itm in gridlist:
+        unitlist=itm.replace(' ','').split(',')
+        minerva.grid.append((float(unitlist[0]),int(unitlist[1]),int(unitlist[2])))
+    pseudo_flag=minerva.forward_flag
+    
+    idx_start=minerva.basehist.index.searchsorted(date)
+    grid_signal=indicators.grid_trading(
+            minerva.basehist, minerva.grid, 
+            trunc_idx=idx_start, pseudo_flag=pseudo_flag)
+    minerva.grid_signal=pd.DataFrame(
+        grid_signal, index=minerva.trading_dates, columns=['signal']) 
+def grid_trading(minerva, date):
+    # current track rec
+    curr_rec=minerva.track.loc[date]
+    drawdown=minerva.basehist['drawdown'][date]
+    price_tpye=minerva.price_type
+    grid_portion=minerva.grid
+    
+    
+    dd_grid=[itm[0]/100.0 for itm in grid_portion]
+    if minerva.new_fund:
+        grid_lv=0
+        for lv in dd_grid:
+            if lv < drawdown:
+                grid_lv+=1
+            grid_lv=min(grid_lv, len(dd_grid)-1)
+        for idx, tgt in enumerate(minerva.port_tgts):
+            minerva.action_dict[tgt]=minerva.act_fund*grid_portion[grid_lv][idx+1]/100.0
+        minerva.trade(date, call_from='DCA',price_type=price_tpye)
+   
+    else: 
+        signal=minerva.grid_signal.loc[date].values[0]
+        if signal != 0:
+            for idx, tgt in enumerate(minerva.port_tgts):
+                grid_lv=int(signal)
+                minerva.action_dict[tgt]=minerva.act_fund*grid_portion[grid_lv-1][idx+1]/100.0
+            minerva.trade(date, call_from='GRID_TRADING',price_type=price_tpye)
+
+def grid_trading_rebalance(minerva, date):
+    action_dict = minerva.action_dict
+    port_dic=minerva.pos_scheme(minerva, date)
+    curr_rec=minerva.track.loc[date]
+    port_value=curr_rec['port_value']
+    # only deleverage
+    for tgt in minerva.port_tgts:
+        action_dict[tgt]=port_value*port_dic[tgt]-curr_rec[f'{tgt}_value']
+ 
+    return action_dict   
+
 # =================== For postion schemes
 def pos_prescribe(minerva, date):
     pos_dic={}
@@ -185,7 +241,7 @@ def fund_dynamic(minerva, date):
         return minerva.ini_fund
     
     portion_adj=[
-        (0.3,8),(0.25,6),(0.2,4),(0.15,2),(0.1,1),(0.05,0.5)]
+        (0.6,8),(0.5,5),(0.4,3),(0.3,1.5),(0.2,1),(0.1,0.5)]
     infund=minerva.cash_flow
     hist=minerva.basehist
     pretday=date+datetime.timedelta(days=-1)

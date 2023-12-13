@@ -6,8 +6,8 @@ date_parser = lambda date: datetime.datetime.strptime(
     date.split()[0],'%Y-%m-%d')
 arch_path='/Users/zhenningli/work/mercuriuslite/data/archive/'
 
-X_ticker='SPY'
-Y_ticker='SPLG'
+X_ticker='QQQ'
+Y_ticker='TQQQ'
 
 # Read in the Y and X data
 Y_data = pd.read_csv(f'{arch_path}/{Y_ticker}.csv',date_parser=date_parser, index_col='Date')

@@ -55,3 +55,24 @@ def ma_crossover(hist, para_lst, trunc_idx=0, pseudo_flag=False):
         signal=np.concatenate(([0.0], signal[:-1]))
         diff=np.concatenate(([0.0], diff[:-1]))
     return signal, ma_short[-1], ma_long[-1]
+
+def grid_trading(hist, para_lst, trunc_idx=0, pseudo_flag=False):
+    '''
+    calculate grid trading signal
+    pseudo_flag: True if use pseudo trading day data
+    returns: 0, no signal, 1-n: buying grid signal 
+    '''
+    drawdown=hist['drawdown'][trunc_idx:].values
+    for lv, itm in enumerate(para_lst):
+        gridlv=itm[0]/100.0
+        drawdown=np.where((drawdown<gridlv) & (drawdown>0), lv, drawdown)
+    signal=np.where((drawdown<1.0) & (drawdown>0), len(para_lst), drawdown)
+    curr_lv=0.0
+    for idx, ele in enumerate(signal.tolist()):
+        if ele > curr_lv:
+            curr_lv=ele
+        else:
+            if ele ==0:
+                curr_lv=0
+            signal[idx]=0.0
+    return signal

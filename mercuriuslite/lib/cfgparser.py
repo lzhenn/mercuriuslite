@@ -20,7 +20,12 @@ def write_cfg(cfg_hdl, config_fn):
     """ Simply write the config files """
     with open(config_fn, 'w') as configfile:
         cfg_hdl.write(configfile)
-
+def cfg_update(cfg, spdic):
+    if spdic != {}:
+        for sec, lst in spdic.items():
+            key, val = lst[0], lst[1]
+            cfg[sec][key]=val
+    return cfg
 def cfg_get_varlist(cfg, key1, key2):
     varlist=cfg[key1][key2].split(',')
     varlist=[ele.strip() for ele in varlist]

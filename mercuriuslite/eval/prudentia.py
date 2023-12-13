@@ -69,6 +69,8 @@ class Prudentia:
         track['norisk_total_value']=track['accu_fund']
         for idx,tgt in enumerate(self.tickers):
             idx_start=self.hist[tgt].index.searchsorted(track.index[0])
+            print(self.hist[tgt],self.paras[idx].replace(' ','').split(','),idx_start)
+            
             track['action']=self.strategy(
                 self.hist[tgt], self.paras[idx].replace(' ','').split(','),idx_start)[:-1]
             cash2use=accu_fund*self.portions[idx]

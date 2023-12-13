@@ -101,7 +101,7 @@ def init_track(dates, tgts):
         track[f'{ticker}_share']=0
 
     return track
-
+# ------------ cal_funcs for historical data ------------
 def cal_tr(hist):
     '''
     calculate true range
@@ -121,6 +121,14 @@ def cal_daychange(hist):
     c=hist['Close'].values
     dc=np.diff(c, prepend=c[0])/c
     return dc
+
+def cal_drawdown(hist):
+    '''
+    calculate drawdown
+    '''
+    dd=(hist['Close'].cummax() - hist['Close']) / hist['Close'].cummax()
+    return dd
+
 def cal_trade_day(lead_str):
     for key_wd in ['day','week','mon','qtr','yr']:
         if key_wd in lead_str:

@@ -89,7 +89,8 @@ class Minerva:
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
         # LZN Debug
-        self.balance_dates.append(self.scheme_end_time)
+        if not(self.balance_dates==[]):
+            self.balance_dates.append(self.scheme_end_time)
         self.defer_balance=False
        
         # no risk
@@ -185,7 +186,7 @@ class Minerva:
             self.act_fund=act_flow
             msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
                 f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-                f' on {date.strftime("%Y-%m-%d")}'
+                f', cash_in_hand: {utils.fmt_value(self.track.loc[date,"cash"])} on {date.strftime("%Y-%m-%d")}'
             utils.write_log(print_prefix+msg_log)
             
         # deal with real account
@@ -228,7 +229,7 @@ class Minerva:
         # adjust by specific scheme
         self.action_dict=getattr(
             scheme_zoo, self.scheme_name+'_rebalance')(self, date)
-        self.trade(date,call_from='Rebalance')
+        self.trade(date,call_from='REBALANCE')
         #print_dic = {k: round(v, 2) for k, v in port_dic.items()}
         #utils.write_log(f'{print_prefix}Rebalanced Portfolio: {print_dic} ')
         self.defer_balance=False 
@@ -409,7 +410,8 @@ class Minerva:
         self.lastday_dic=painter.append_dic_table(
             self.lastday_dic, lstday_dic,
             column_name=track_identity, index_name='Metrics')
-        painter.draw_perform_fig(track, self.port_tgts, fig_fn)
+        if self.cfg['POSTPROCESS'].getboolean('visualize'):
+            painter.draw_perform_fig(track, self.port_tgts, fig_fn)
         #print(track.iloc[-1])
 
     def trade(self, date, call_from='DCA', price_type='NearOpen'):
@@ -424,12 +426,18 @@ class Minerva:
         track=self.track
         msg_prefix='[PROPOSED]'
         #[('SPXL', -Val), ('SPY', Val)]
+        cash_needed=sum(self.action_dict.values())
+        cash_inhand=track.loc[date,'cash']
+        adj_ratio=1.0
+        if cash_inhand<cash_needed:
+            adj_ratio=cash_inhand/cash_needed
         act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
         for act_tgt in act_tgt_lst:
-            tgt,val=act_tgt[0],act_tgt[1]
+            tgt,val=act_tgt[0],act_tgt[1]*adj_ratio
             price_rec=self.port_hist[tgt].loc[date]
             trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
+            #print(f'cash_inhand:{cash_inhand:.2f},cash_needed:{cash_needed:.2f},share:{share:.0f},trade_price:{trade_price:.2f}')
             if not(share==0):
                 log_data=f'{msg_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
@@ -449,7 +457,11 @@ class Minerva:
                 track.loc[date,'port_value']+=share*trade_price
                 track.loc[date,'cash']-=share*trade_price
                 self._feed_operation(date, tgt, share, trade_price)
-        track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']   
+        track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']
+        for tgt in self.port_tgts:
+            self.action_dict[tgt]=0.0
+
+ 
     def msg_handler(self):
         
         # portfolio performance

@@ -18,7 +18,7 @@ def draw_perform_fig(df, tgts, fig_fn):
     fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
-    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold']
+    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey']
 
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
@@ -288,7 +288,8 @@ def draw_histograms(x, xnames, fig_fn):
     for i, xname in enumerate(xnames):
         ax.hist(x[:,i], alpha=0.5, bins=50, label=xname)
     ax.legend() 
-    ax.set_yscale('log')
+    print(np.percentile(x, [10, 25, 50, 75, 90, 95, 99]))
+    #ax.set_yscale('log')
     plt.savefig(fig_fn, bbox_inches='tight', dpi=const.DPI)
 def draw_corr_heatmap(cr_mtx, xnames, fig_fn): 
     sns.heatmap(cr_mtx, cmap='coolwarm', 

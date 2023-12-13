@@ -14,18 +14,26 @@ class Andariel:
         self.archive_dir=self.cfg['SCRAWLER']['archive_dir']
         self.ltm_dir=mercurius.ltm_dir
     # ---Classes and Functions---
-    def fetch(self, inperiod='1mo'):
-        """ Fetch data from yahoo finance """
+    def fetch(self, inperiod='1y', type='hist'):
+        """ Fetch data from yahoo finance 
+            type: 
+                hist ---- history price
+                div  ---- dividends
+        """
         if not os.path.exists(self.archive_dir):
             os.makedirs(self.archive_dir)
         for ticker in self.tickers:
             utils.write_log(f'{print_prefix}Fetching {ticker}...')
             ticker_hdl=yf.Ticker(ticker)
-            hist=ticker_hdl.history(period=inperiod)
-            fn=os.path.join(self.archive_dir,ticker)+'.csv'
+            if type=='div':
+                hist=ticker_hdl.dividends
+                fn=os.path.join(self.archive_dir,ticker)+'.div.csv'
+            else:
+                hist=ticker_hdl.history(period=inperiod)
+                fn=os.path.join(self.archive_dir,ticker)+'.csv'
             hist.to_csv(fn)
             
-    def persist(self):
+    def persist(self, type='hist'):
         """ Persist data to long-term storage directory """
         
         if not os.path.exists(self.ltm_dir):

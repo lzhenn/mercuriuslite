@@ -34,7 +34,7 @@ class Mercurius:
     Mercurius is a class to drive the system
     '''
 
-    def __init__(self, cfgfn='config.case.ini'):
+    def __init__(self, cfgfn='config.case.ini',cfg_spdic={}):
         self._setup_logging()
 
         if not(os.path.exists(os.path.join(CWD,cfgfn))):
@@ -42,6 +42,7 @@ class Mercurius:
             copy_cfg(os.path.join(CWD,cfgfn))
         
         self.cfg=cfgparser.read_cfg(os.path.join(CWD,cfgfn))
+        cfgparser.cfg_update(self.cfg, cfg_spdic)
         self.ltm_dir=self.cfg['MERCURIUS']['ltm_dir']
         self.model_path=self.cfg['MERCURIUS']['model_path']
 
@@ -79,14 +80,15 @@ class Mercurius:
         Configures the logging module using the 
         'config.logging.ini' file in the installed package.
         """
-        resource_path = os.path.join('conf','config.logging.ini')
-        try:
-            config_file = pkg_resources.resource_filename(
-                package_name, resource_path)
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Config file '{resource_path}' not found in '{package_name}'.")
-        
+        config_file = 'config.logging.ini'    
+        if not(os.path.exists(config_file)):
+            resource_path = os.path.join('conf','config.logging.ini')
+            try:
+                config_file = pkg_resources.resource_filename(
+                    package_name, resource_path)
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"Config file '{resource_path}' not found in '{package_name}'.")
         logging.config.fileConfig(
             config_file, disable_existing_loggers=False)
 

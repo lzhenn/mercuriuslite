@@ -12,13 +12,33 @@ class Metatron:
     '''
     def __init__(self,mercurius):
         self.cfg=mercurius.cfg
-        self.tickers=self.cfg['EVALUATOR']['ana_tickers'].replace(' ','').split(',')
-        self.metric=self.cfg['EVALUATOR']['metric']
-        self.method_name=self.cfg['EVALUATOR']['method']
+        self.tickers=self.cfg['INSPECTOR']['ana_tickers'].replace(' ','').split(',')
+        self.metric=self.cfg['INSPECTOR']['metric']
+        self.method_name=self.cfg['INSPECTOR']['method']
         self.hist={}
+                
+        self.eval_start_time=utils.parse_intime(
+            self.cfg['INSPECTOR']['inspect_start_time'])     
+        self.eval_end_time=utils.parse_intime(
+            self.cfg['INSPECTOR']['inspect_end_time'])
+        
         for ticker in self.tickers:
             self.hist[ticker]=io.load_hist(mercurius.ltm_dir,ticker)
-        if self.cfg['EVALUATOR'].getboolean('trim_flag'):
+        
+        dateseries=self.hist[self.tickers[0]].index
+        if self.eval_start_time != '0':
+            idx_start=dateseries.searchsorted(self.eval_start_time)
+        else:
+            idx_start=0
+        if self.eval_end_time != '0':
+            idx_end=dateseries.searchsorted(self.eval_end_time)
+        else:
+            idx_end=-1
+        self.dateseries=dateseries[idx_start:idx_end]
+        for tgt in self.tickers:
+            self.hist[tgt]=self.hist[tgt].loc[self.dateseries]
+    
+        if self.cfg['INSPECTOR'].getboolean('trim_flag'):
             self.hist, lenhist=utils.trim_hist(self.hist) 
         self.metricval=np.zeros((lenhist,len(self.tickers)))
     
