@@ -133,6 +133,8 @@ def track_inspect(track):
     track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']   
     track['daily_return']=np.log(track['daily_return'])
     track['accum_return']=np.exp(track['daily_return'].cumsum())
+    track['drawdown'] = (
+        track['accum_return'].cummax() - track['accum_return']) / track['accum_return'].cummax()
     return track
 
 def baseline_inspect(track, basehist):
@@ -156,10 +158,11 @@ def strategy_eval(track):
     total_days=val
     table_dic['Total Test Duration']=f'{val} days'
     
-    val=utils.fmt_value(track_end['accu_fund'])
+    val=utils.fmt_value(track_end['accu_fund'], pos_sign=False)
     table_dic['Cumulative Funding']=val
     
-    val=utils.fmt_value(track_end['total_value'])
+    val=utils.fmt_value(track_end['total_value'], pos_sign=False)
+    val=f'{val} ({utils.fmt_value(track_end["total_value"]-track_end["accu_fund"], pos_sign=False)})'
     table_dic['Cumulative Value']=val
     
     twr=track_end['accum_return']-1

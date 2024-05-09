@@ -247,15 +247,20 @@ def determ_price(price_rec, price_type):
         price=np.random.uniform(low=price_rec['Low'],high=price_rec['High'])
     return price
 
-def fmt_value(val, vtype='usd', dec=2):
+def fmt_value(val, vtype='usd', pos_sign=True):
     # vtype='usd','pct'
     if issubclass(type(val), str):
         return val
     if vtype=='usd':
         fmt_val=f'${val:.2f}'
+        if pos_sign and val>0:
+            fmt_val=f'+\${val:.2f}'
     elif vtype=='pct':
         if val>=0:
-            fmt_val=f'+{val:.2%}'
+            if pos_sign:
+                fmt_val=f'+{val:.2%}'
+            else:
+                fmt_val=f'{val:.2%}'
         else:
             fmt_val=f'{val:.2%}'
     elif vtype=='f':

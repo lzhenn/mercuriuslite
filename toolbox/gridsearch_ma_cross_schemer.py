@@ -16,11 +16,11 @@ def run_strategy(c):
 
 def main():
     
-    #short_ma = [5, 7, 9, 10, 12, 15]
-    #long_ma = [200, 210, 220, 230, 240, 250, 260]
-    short_ma = [5, 10, 15, 20]
+    short_ma = [5, 7, 9, 10, 12, 15,20]
+    #long_ma = [10,12,15,18,20,22,25,27,30,35,40,45,50]
+    #short_ma = [3,4,5,6,7,9,12]
     #long_ma = [50, 80, 100,  150, 200, 220, 280, 300, 400, 500, 600, 800]
-    long_ma = [50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 210, 220, 250, 300]
+    long_ma = [15,20,30,50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 210, 220, 250, 300]
     combines = list(itertools.product(short_ma, long_ma))
     with concurrent.futures.ProcessPoolExecutor(max_workers=6) as executor:
         for c in combines:

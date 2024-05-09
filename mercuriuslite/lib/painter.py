@@ -9,64 +9,71 @@ import seaborn as sns
 print_prefix='lib.painter>>'
 
 
-def draw_perform_fig(df, tgts, fig_fn):
+def draw_perform_fig(
+    df, tgts, fig_fn, 
+    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey']):
     # Calculate the daily return rate
 
-    # Calculate the maximum drawdown
 
     # Plot the three figures
     fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
-    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey']
 
+    total_days=(df.index[-1]-df.index[0]).days
     ax[0].plot(df.index, df['accu_fund'], 
-        label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"])}', 
+        label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"],pos_sign=False)}', 
         color='black', linewidth=1)
+    chg=utils.fmt_value(df.iloc[-1]["norisk_total_value"]-df.iloc[-1]["accu_fund"])
     ax[0].plot(df.index, df['norisk_total_value'], 
-        label=f'NoRiskV: {utils.fmt_value(df.iloc[-1]["norisk_total_value"])}', 
-        color='green', linewidth=1.5)
+        label=f'NoRiskV: {utils.fmt_value(df.iloc[-1]["norisk_total_value"],pos_sign=False)} ({chg})', 
+        color='lightgrey', linewidth=1.5)
+    chg=utils.fmt_value(df.iloc[-1]["total_value"]-df.iloc[-1]["accu_fund"])
     ax[0].plot(df.index, df['total_value'], 
-        label=f'NAV: {utils.fmt_value(df.iloc[-1]["total_value"])}', 
+        label=f'NAV: {utils.fmt_value(df.iloc[-1]["total_value"], pos_sign=False)} ({chg})', 
         color='blue')
  
+    tgt_val=utils.fmt_value(
+        df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct",pos_sign=False)
     ax[0].fill_between(
         df.index, df['cash'], 0, 
-        color='green', alpha=0.4, 
-        label=f'Cash ({utils.fmt_value(df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct")})')
+        color='green', alpha=0.5, 
+        label=f'Cash ({tgt_val}; {utils.fmt_value(df.iloc[-1]["cash"], pos_sign=False)})')
     df_accu=df['cash']
     for idx,tgt in enumerate(tgts):
+        tgt_val=utils.fmt_value(
+            df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct",pos_sign=False)
+        tgt_val=f'({tgt_val}; {utils.fmt_value(df.iloc[-1][f"{tgt}_value"], pos_sign=False)})'
         ax[0].fill_between(
             df.index, df[tgt+'_value']+df_accu, df_accu,
-            color=port_colors[idx], alpha=0.4,
-            label=f'{tgt} ({utils.fmt_value(df.iloc[-1][tgt+"_value"]/df.iloc[-1]["total_value"],vtype="pct")})')
+            color=port_colors[idx], alpha=0.5, linewidth=0.5,
+            label=f'{tgt} {tgt_val}')
         df_accu=df_accu+df[tgt+'_value']
     #ax[0].set_yscale('log')
     ax[0].set_ylabel('NAV')
     ax[0].legend(loc='upper left',fontsize=const.SM_SIZE)
-    ax[0].set_title('Portfolio Performance valid from '+str(df.index[0].date())+' to '+str(df.index[-1].date()))
+    ax[0].set_title('Portfolio Performance valid from '+str(df.index[0].date())+' to '+str(df.index[-1].date())+f' ({total_days} days)')
 
     # ------------plot 1: return rate
-    total_days=(df.index[-1]-df.index[0]).days
-    ax[1].plot(df.index, df['fund_change']+1, 
+    ax[1].plot(df.index, df['fund_change'], 
                label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
                color='red', linewidth=1)
     cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,total_days),vtype="pct")
-    ax[1].plot(df.index, df['baseline_return'], 
+    ax[1].plot(df.index, df['baseline_return']-1, 
                label=f'Baseline ({utils.fmt_value(df.iloc[-1]["baseline_return"]-1,vtype="pct")}|{cagr_str})',
                color='orange', linewidth=1)
     twr=df.iloc[-1]["accum_return"]-1
     cagr_str=utils.fmt_value(mathlib.cagr(twr,total_days),vtype="pct")
-    ax[1].plot(df.index, df['accum_return'], 
+    ax[1].plot(df.index, df['accum_return']-1, 
                label=f'TWR ({utils.fmt_value(twr,vtype="pct")}|{cagr_str})', 
                color='blue')
     
     no_risk=df['norisk_total_value']/df['accu_fund']
-    ax[1].plot(df.index, no_risk, 
+    ax[1].plot(df.index, no_risk-1, 
                label=f'NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
                color='green', linewidth=1.5)
     
-    ax[1].axhline(y=1.0, linewidth=1, color='grey', linestyle='--')
+    ax[1].axhline(y=0.0, linewidth=1, color='blue', linestyle='--')
     ax[1].tick_params(axis='y', labelcolor='blue')
     ax[1].set_ylabel('Accumulated Return', color='blue')
     ax[1].legend(loc='upper left',fontsize=const.SM_SIZE)
@@ -85,12 +92,18 @@ def draw_perform_fig(df, tgts, fig_fn):
     ax_bar.tick_params(axis='y', labelcolor='red')
     
     hlines=[(0.1,'green',0.5,'--'),(0.05,'green',0.5,':'),
-            (0,'grey',1,'--'),(-0.05,'red',0.5,':'),
+            (0,'red',1,'--'),(-0.05,'red',0.5,':'),
             (-0.1,'red',0.5,'--')]
     for hline in hlines:
         ax_bar.axhline(
             y=hline[0], color=hline[1], linewidth=hline[2], linestyle=hline[3])
-
+    if twr.max()>10: 
+        ax[1].set_yscale('log')
+        ticker=[0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0]
+        ax[1].yaxis.set_ticks(ticker)
+        ax[1].set_yticklabels(ticker)
+    else:
+        ax[1].set_yscale('linear')
     # ------------plot 2: maximum drawdown
     ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', linewidth=1, 
         label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
@@ -149,7 +162,7 @@ def draw_perform_fig(df, tgts, fig_fn):
         max_lv=df['drawdown'].loc[start_date:end_date].max()
         ax[2].axvspan(start_date, end_date, alpha=0.4, color='coral')
         x,y=start_date,-max_lv
-        ax[2].text(x, y-0.05, 
+        ax[2].text(x, -0.05, 
             f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
             ha='left', va='bottom', fontsize=const.SM_SIZE,
             weight='bold')
@@ -356,5 +369,5 @@ def fmt_dic(dic):
         for kw in ['return','drawdown','change']:
             if kw in k:
                 fmt_str='pct'
-        dic[k]=utils.fmt_value(v,fmt_str)
+        dic[k]=utils.fmt_value(v,fmt_str, pos_sign=False)
     return dic

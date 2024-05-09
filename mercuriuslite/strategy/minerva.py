@@ -280,7 +280,6 @@ class Minerva:
         else:
             track.loc[date, 'daily_return']=track.loc[date,'total_value']/ini_fund
             track.loc[date, 'norisk_total_value']=ini_fund*self.NRDR
-        
         track['drawdown'] = (
             track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
         
@@ -327,21 +326,20 @@ class Minerva:
 
             (ma_shortlag,shortvalue)=self.ma_cross[f'{ticker}_short']
             (ma_longlag,longvalue)=self.ma_cross[f'{ticker}_long']
-            short_str=f'{utils.fmt_value(shortvalue)} (MA{ma_shortlag})'
-            long_str=f'{utils.fmt_value(longvalue)} (MA{ma_longlag})'
+            short_str=f'{utils.fmt_value(shortvalue, pos_sign=False)} (MA{ma_shortlag})'
+            long_str=f'{utils.fmt_value(longvalue, pos_sign=False)} (MA{ma_longlag})'
             self.ticker_perform_dic[f'{ticker} (S)']=[
-                utils.fmt_value(price),short_str, long_str,
+                utils.fmt_value(price, pos_sign=False),short_str, long_str,
                 lastday_share[0], lastday_value[0], 
-                utils.fmt_value(in_s), utils.fmt_value(out_s),
-                utils.fmt_value(gain_s)]
+                utils.fmt_value(in_s, pos_sign=False), utils.fmt_value(out_s, pos_sign=False),
+                utils.fmt_value(gain_s, pos_sign=False)]
             self.ticker_perform_dic[f'{ticker} (R)']=[
-                utils.fmt_value(price), short_str, long_str,
+                utils.fmt_value(price, pos_sign=False), short_str, long_str,
                 lastday_share[1], lastday_value[1], 
-                utils.fmt_value(in_r), utils.fmt_value(out_r),
-                utils.fmt_value(gain_r)]
+                utils.fmt_value(in_r, pos_sign=False), utils.fmt_value(out_r, pos_sign=False),
+                utils.fmt_value(gain_r, pos_sign=False)]
             self.lastday_dic.pop(f'{ticker}_share')
             self.lastday_dic.pop(f'{ticker}_value')
-        #exit()
     def trade_real(self,date):
         track=self.real_track
         real_acc=self.real_acc
@@ -411,7 +409,9 @@ class Minerva:
             self.lastday_dic, lstday_dic,
             column_name=track_identity, index_name='Metrics')
         if self.cfg['POSTPROCESS'].getboolean('visualize'):
-            painter.draw_perform_fig(track, self.port_tgts, fig_fn)
+            port_colors=self.cfg['POSTPROCESS']['port_colors'].split(',')
+            painter.draw_perform_fig(
+                track, self.port_tgts, fig_fn, port_colors)
         #print(track.iloc[-1])
 
     def trade(self, date, call_from='DCA', price_type='NearOpen'):
@@ -480,10 +480,10 @@ class Minerva:
        
         # operation records
         tb_msg=painter.table_print(
-            self.operation_df.sort_values(by='Date',ascending=False),table_fmt='html')
+            self.operation_df.sort_values(by='Date',ascending=False).iloc[0:10],table_fmt='html')
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Schemer Operations</h2>{tb_msg}')
         tb_msg=painter.table_print(
-            self.real_acc.sort_values(by='Date',ascending=False),table_fmt='html')
+            self.real_acc.sort_values(by='Date',ascending=False).iloc[0:10],table_fmt='html')
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
         
         # form msg all
