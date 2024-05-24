@@ -97,24 +97,26 @@ def draw_perform_fig(
     for hline in hlines:
         ax_bar.axhline(
             y=hline[0], color=hline[1], linewidth=hline[2], linestyle=hline[3])
+    '''
     if twr.max()>10: 
-        ax[1].set_yscale('log')
-        ticker=[0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0]
+        ax[1].set_yscale('symlog')
+        ticker=[-1.0, -0.75, -0.5, -0.25, -0.1, 0.0, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0, 50.0]
         ax[1].yaxis.set_ticks(ticker)
         ax[1].set_yticklabels(ticker)
     else:
         ax[1].set_yscale('linear')
+    '''
     # ------------plot 2: maximum drawdown
-    ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', linewidth=1, 
+    ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', alpha=0.5, 
         label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
     ax[2].fill_between(
         df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
     max_str=utils.fmt_value(-df["drawdown"].max(),vtype="pct")
     latest_str=utils.fmt_value(-df["drawdown"].iloc[-1],vtype="pct")
-    ax[2].plot(df.index, -df['drawdown'], alpha=0.5, 
+    ax[2].plot(df.index, -df['drawdown'], alpha=0.3, 
                label=f'Drawdown (Max: {max_str}|Latest: {latest_str})', color='blue')
     ax[2].fill_between(
-        df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='blue', alpha=0.3)
+        df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='dodgerblue',alpha=0.5)
     
     hlines=[(0.0,'black',1,'-'),(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
             (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
@@ -146,7 +148,7 @@ def draw_perform_fig(
         max_lv=df['drawdown'].loc[start_date:end_date].max()
         if max_lv<0.05:
             continue
-        ax[2].axvspan(start_date, end_date, alpha=0.3, color='grey')
+        ax[2].axvspan(start_date, end_date, alpha=0.3, color='lightgrey')
         x,y=start_date,-max_lv
         ax[2].text(x, y/2, 
             f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
@@ -276,7 +278,9 @@ def fast_plot(oculus):
         ax_histy.hlines(y=ybase.mean(), xmin=0, xmax=1, linewidth=2, color='black')       
         
     #plt.show()
-    figname=os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png')
+    cfg=oculus.cfg
+    figname=cfg['POSTPROCESS']['figname']
+    #figname=os.path.join('./fig/', oculus.model_name+'.'+oculus.ticker+'.png')
     plt.savefig(figname, bbox_inches='tight', dpi=const.DPI)
 
 def scatter_hist(x, y, ybase, ax, ax_histy):

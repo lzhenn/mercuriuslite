@@ -323,21 +323,25 @@ class Minerva:
             in_r, out_r=utils.cal_flow(real_acc,ticker)
             #gain_r= float(lastday_value[1])-out_r-in_r
             gain_r= float(lastday_value[1][1:])-out_r-in_r
-
-            (ma_shortlag,shortvalue)=self.ma_cross[f'{ticker}_short']
-            (ma_longlag,longvalue)=self.ma_cross[f'{ticker}_long']
-            short_str=f'{utils.fmt_value(shortvalue, pos_sign=False)} (MA{ma_shortlag})'
-            long_str=f'{utils.fmt_value(longvalue, pos_sign=False)} (MA{ma_longlag})'
-            self.ticker_perform_dic[f'{ticker} (S)']=[
-                utils.fmt_value(price, pos_sign=False),short_str, long_str,
-                lastday_share[0], lastday_value[0], 
-                utils.fmt_value(in_s, pos_sign=False), utils.fmt_value(out_s, pos_sign=False),
-                utils.fmt_value(gain_s, pos_sign=False)]
-            self.ticker_perform_dic[f'{ticker} (R)']=[
-                utils.fmt_value(price, pos_sign=False), short_str, long_str,
-                lastday_share[1], lastday_value[1], 
-                utils.fmt_value(in_r, pos_sign=False), utils.fmt_value(out_r, pos_sign=False),
-                utils.fmt_value(gain_r, pos_sign=False)]
+            if self.scheme_name == 'ma_cross':
+                (ma_shortlag,shortvalue)=self.ma_cross[f'{ticker}_short']
+                (ma_longlag,longvalue)=self.ma_cross[f'{ticker}_long']
+                s2l=(shortvalue-longvalue)/longvalue
+                s2l_txt=utils.fmt_value(s2l, pos_sign=True, vtype="pct")
+                p2l=(price-longvalue)/longvalue
+                p2l_txt=utils.fmt_value(p2l, pos_sign=True, vtype="pct")
+                short_str=f'{utils.fmt_value(shortvalue, pos_sign=False)} (MA{ma_shortlag};{s2l_txt})'
+                long_str=f'{utils.fmt_value(longvalue, pos_sign=False)} (MA{ma_longlag})'
+                self.ticker_perform_dic[f'{ticker} (S)']=[
+                    f'{utils.fmt_value(price, pos_sign=False)} ({p2l_txt})',short_str, long_str,
+                    lastday_share[0], lastday_value[0], 
+                    utils.fmt_value(in_s, pos_sign=False), utils.fmt_value(out_s, pos_sign=False),
+                    utils.fmt_value(gain_s, pos_sign=False)]
+                self.ticker_perform_dic[f'{ticker} (R)']=[
+                    f'{utils.fmt_value(price, pos_sign=False)} ({p2l_txt})', short_str, long_str,
+                    lastday_share[1], lastday_value[1], 
+                    utils.fmt_value(in_r, pos_sign=False), utils.fmt_value(out_r, pos_sign=False),
+                    utils.fmt_value(gain_r, pos_sign=False)]
             self.lastday_dic.pop(f'{ticker}_share')
             self.lastday_dic.pop(f'{ticker}_value')
     def trade_real(self,date):

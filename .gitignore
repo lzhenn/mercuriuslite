@@ -6,5 +6,7 @@ dist
 sandbox
 data
 operational
+operational.2024
+operational.2023
 test_case/fig
 test_case/output

@@ -54,6 +54,10 @@ def buy_and_hold_rebalance(minerva, date):
 def ma_cross_init(minerva, date):
     minerva.paras=minerva.cfg['S_ma_cross']['paras'].replace(' ','').split('/')
     minerva.price_type=minerva.cfg['S_ma_cross']['trade_price_type']
+    try:
+        minerva.out_port=float(minerva.cfg['S_ma_cross']['out_portion'])
+    except KeyError:
+        minerva.out_port=1.0
     port_dic=minerva.pos_scheme(minerva, date)
     minerva.ticker_assets={}
     minerva.ma_cross={}
@@ -76,42 +80,51 @@ def ma_cross_init(minerva, date):
 def ma_cross(minerva, date):
     # current track rec
     curr_rec=minerva.track.loc[date]
-    price_tpye=minerva.price_type
+    price_type=minerva.price_type
+    out_port=minerva.out_port
+    port_dic=minerva.pos_scheme(minerva, date)
+    cash_min_ava=curr_rec['cash']-curr_rec['total_value']*port_dic['cash']
     ma_flag=False
     for tgt in minerva.port_tgts:
+        port_portion=port_dic[tgt] # portion from config
         curr_hist=minerva.port_hist[tgt].loc[date]
         signal=minerva.ma_cross[tgt].loc[date].values[0]
+        # current value
+        minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_type)
         if signal != 0:
             ma_flag=True
         if signal == -1:
-            minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_tpye)
-        if signal == 1 and len(minerva.port_tgts)==1:
-            minerva.ticker_assets[tgt]=curr_rec['total_value']
-        minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*signal
+            minerva.action_dict[tgt]=minerva.ticker_assets[tgt]*out_port*(-1.0)
+        if signal == 1: 
+            minerva.action_dict[tgt]=min(curr_rec['total_value']*port_portion-minerva.ticker_assets[tgt],cash_min_ava)
+    
     if minerva.new_fund:
+        #  ma_cross+ or have existing position
         port_flag=[
-            (curr_rec[f'{tgt}_share']>0) and (
+            ((minerva.ticker_assets[tgt]/curr_rec['total_value'])/port_dic[tgt]>0.7) and (
                 minerva.ma_cross[tgt].loc[date].values[0]>=0) for tgt in minerva.port_tgts]
         nexpose=sum(port_flag) 
         if nexpose > 0:
             for idx,tgt in enumerate(minerva.port_tgts):
                 if port_flag[idx]:
                     minerva.action_dict[tgt]+=minerva.act_fund/nexpose
-        minerva.trade(date, call_from='DCA',price_type=price_tpye)
+            minerva.trade(date, call_from='DCA',price_type=price_type)
         return
     if ma_flag:
-        minerva.trade(date, call_from='MA_CROSS',price_type=price_tpye)
+        minerva.trade(date, call_from='MA_CROSS',price_type=price_type)
    
 def ma_cross_rebalance(minerva, date):
     port_dic=minerva.pos_scheme(minerva, date)
+    price_type=minerva.price_type
     curr_rec=minerva.track.loc[date]
+    out_port=minerva.out_port
     action_dict = minerva.action_dict
     total_value=curr_rec['total_value']
     for tgt in minerva.port_tgts:
         curr_hist=minerva.port_hist[tgt].loc[date]
-        minerva.ticker_assets[tgt]=total_value*port_dic[tgt]
-        if curr_rec[f'{tgt}_share']>0:
-            action_dict[tgt]=total_value*port_dic[tgt]-curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, 'Open')
+        minerva.ticker_assets[tgt]=curr_rec[f'{tgt}_share']*utils.determ_price(curr_hist, price_type)
+        if (minerva.ticker_assets[tgt]/curr_rec['total_value'])/port_dic[tgt]>0.7:
+            action_dict[tgt]=total_value*port_dic[tgt]-minerva.ticker_assets[tgt]
         else:
             action_dict[tgt]=0
     return action_dict
@@ -234,12 +247,22 @@ def fund_real(minerva, date):
     infund=infund.loc[infund['ticker']=='cash']
     infund=infund['price'].values[0]
     return infund
+def fund_mutable(minerva, date):
+    if date==minerva.dateseries[0]:
+        return minerva.init_fund
+    cfg=minerva.cfg
+    mut_list=cfg['S_fund_mutable']['mutations'].replace(' ','').split(',')
+    for mut in mut_list[::-1]:
+        mutday,amount=mut.split(':')
+        mutday=pd.to_datetime(mutday)
+        if date>=mutday:
+            return float(amount)
+    return minerva.cash_flow
 
 def fund_dynamic(minerva, date):
     # (drawdown, additional cashflow %)
     if date==minerva.dateseries[0]:
         return minerva.ini_fund
-    
     portion_adj=[
         (0.6,8),(0.5,5),(0.4,3),(0.3,1.5),(0.2,1),(0.1,0.5)]
     infund=minerva.cash_flow
@@ -262,7 +285,6 @@ def cash_fixed(minerva, date):
 
 def cash_dynamic(minerva, date):
     # (drawdown, cash_change)
-    
     portion_adj=[
         (0.3,-0.2),(0.25,-0.2),(0.2,-0.2),
         (0.15,-0.15),(0.1,-0.1),(0.05,-0.05)]

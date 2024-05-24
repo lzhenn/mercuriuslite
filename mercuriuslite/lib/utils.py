@@ -43,6 +43,8 @@ def trim_hist(hist):
 def form_scheme_fig_fn(cfg,suffix=''):
     fig_path=cfg['POSTPROCESS']['fig_path']
     fn_lst=[cfg['SCHEMER']['scheme_name']]
+    tgts=cfg['SCHEMER']['port_tgts'].replace(' ','').replace(',','_')
+    fn_lst.append(tgts)
     if cfg['SCHEMER'].getboolean('forward_flag'):
         fn_lst.append('forward')
     elif cfg['SCHEMER'].getboolean('backtest_flag'):
@@ -50,7 +52,14 @@ def form_scheme_fig_fn(cfg,suffix=''):
     if suffix!='':
         fn_lst.append(suffix)
     fn_lst.append('png')
-    fn=os.path.join(fig_path,'.'.join(fn_lst)) 
+    
+    try:
+        fn=cfg['POSTPROCESS']['fig_fn']
+        if suffix!='':
+            fn=fn+'.'+suffix
+        fn=os.path.join(fig_path,f'{fn}.png') 
+    except KeyError:
+        fn=os.path.join(fig_path,'.'.join(fn_lst)) 
     return fn
 def throw_error(msg):
     '''

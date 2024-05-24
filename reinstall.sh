@@ -1,5 +1,5 @@
 #pip uninstall mercuriuslite 
-#rm -rf build dist *egg-info
+rm -rf build dist *egg-info
 python setup.py sdist
 pip install .
 #cd toolbox 
