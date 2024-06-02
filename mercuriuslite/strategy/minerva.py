@@ -174,7 +174,7 @@ class Minerva:
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(self, date)
         
-        if act_flow>0:
+        if not(act_flow==0):
             # deal with new funding 
             self._feed_operation(date, 'cash', np.nan, act_flow)
             self.track.loc[date, 'cash']+=act_flow
