@@ -41,6 +41,10 @@ def load_xy(
     #        self.X, self.Y, test_size=self.test_size, shuffle=False)
 def load_hist(dbpath, tgt, add_pseudo=False, dateseries=None):
     ''' load historical data accroding to dbpath and tgt '''
+    if tgt=='':
+        tgt='FOO'
+    
+    utils.write_log(f'{print_prefix}load {tgt}')
     fn_path=os.path.join(dbpath, tgt+'.csv')
     tgt_hist=pd.read_csv(fn_path, parse_dates=True, 
         date_parser=date_parser, index_col='Date')

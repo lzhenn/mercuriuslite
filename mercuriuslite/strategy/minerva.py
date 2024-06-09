@@ -4,7 +4,7 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const, painter, messenger
+from ..lib import utils, io, const, painter, messenger, mathlib
 from ..eval import prudentia 
 from . import scheme_zoo 
 import datetime
@@ -36,6 +36,10 @@ class Minerva:
         self.init_fund=float(cfg['SCHEMER']['init_fund'])
         self.db_path=mercurius.ltm_dir
         self.baseticker=cfg['SCHEMER']['baseticker']
+        if self.baseticker=='':
+            self.withbase=False
+        else:
+            self.withbase=True
         self.model_path=mercurius.model_path
         self.port_tgts=cfg['SCHEMER']['port_tgts'].replace(' ','').split(',')
        
@@ -98,20 +102,24 @@ class Minerva:
             self.noriskhist=io.load_hist(self.db_path, '^IRX')
         # operation records
         self.operation_df=utils.init_operation_df()
+        
+        # financing account
+        if self.fund_scheme_name=='financing':
+            scheme_zoo.fund_financing_init(self)        
             
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
-            utils.write_log(f'{print_prefix}load {tgt}')
             self.port_hist[tgt]=io.load_hist(self.db_path, tgt,add_pseudo=self.forward_flag)
             #self.port_model[tgt], self.port_meta[tgt]=io.load_model(
             #    self.model_path, model_name, tgt, baseline=False)
         trading_dates=self.port_hist[self.port_tgts[0]].index
         idx_start=trading_dates.searchsorted(self.scheme_start_time)
         self.trading_dates=trading_dates[idx_start:]
-        self.basehist=io.load_hist(self.db_path, self.baseticker, add_pseudo=self.forward_flag)
-        self.basehist['drawdown'] = (
-            self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
+        if self.withbase:
+            self.basehist=io.load_hist(self.db_path, self.baseticker, add_pseudo=self.forward_flag)
+            self.basehist['drawdown'] = (
+                self.basehist['Close'].cummax() - self.basehist['Close']) / self.basehist['Close'].cummax()
     def account_evolve(self):
         '''
         account track evolve in either backtesting or forward evolving mode
@@ -163,38 +171,52 @@ class Minerva:
             self._on_rolling(date,track_mark='real')
 
     def _on_kickoff(self, date):
+        # daily kickoff signal
         self.NRDR=self.norisk_scheme(self,date)
-    
+        if self.fund_scheme_name=='financing':
+            pass
     def _on_funding(self, date):
         act_flow=0
         
         if date==self.dateseries[0]:
             act_flow=self.init_fund
             getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
+        # financing account, could deposit/withdraw anytime
+        elif self.fund_scheme_name=='financing':
+            act_flow=self.fund_scheme(self, date)
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(self, date)
+         
+        if act_flow<0:
+            if  self.track.loc[date, 'cash']+act_flow<0:
+                self._adjust_value(self.track, 'Open', date)
+                if self.track.loc[date, 'total_value']>abs(act_flow):
+                    self._force_sell(date)
+                else:
+                    act_flow=0
         
-        if not(act_flow==0):
+        # new funding 
+        self.act_fund=act_flow
+        
+        if act_flow!=0:
             # deal with new funding 
-            self._feed_operation(date, 'cash', np.nan, act_flow)
             self.track.loc[date, 'cash']+=act_flow
             self.track.loc[date, 'total_value']+=act_flow
             self.track.loc[date, 'accu_fund']+=act_flow
+            self._feed_operation(date, 'cash', np.nan, act_flow)
             
             self.new_fund=True
-            # new funding 
-            self.act_fund=act_flow
             msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
-                f'{utils.fmt_value(self.track.loc[date,"accu_fund"])} (+{utils.fmt_value(act_flow)})'+\
-                f', cash_in_hand: {utils.fmt_value(self.track.loc[date,"cash"])} on {date.strftime("%Y-%m-%d")}'
+                f'{utils.fmt_value(self.track.loc[date,"accu_fund"],pos_sign=False)} ({utils.fmt_value(act_flow,pos_sign=False)})'+\
+                f', cash_in_hand: {utils.fmt_value(self.track.loc[date,"cash"],pos_sign=False)} on {date.strftime("%Y-%m-%d")}'
             utils.write_log(print_prefix+msg_log)
-            
+        
         # deal with real account
         if self.forward_flag:
             # forward feed lastday msg
             if date==self.dateseries[-1] and self.new_fund:
                 self.msg_dic=utils.feed_msg_title(
-                    self.msg_dic, 'CASH_IN'+utils.fmt_value(act_flow))
+                    self.msg_dic, 'CASH_INOUT'+utils.fmt_value(act_flow))
                 self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>{msg_log}</h2>')
  
             if date in self.real_cash_dates:
@@ -207,7 +229,19 @@ class Minerva:
                     f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
                     f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(real_flow)})'+\
                     f' on {date.strftime("%Y-%m-%d")}')
-    
+    def _force_sell(self, date):
+        trade_day=utils.find_trade_date(date, self.trading_dates)
+        track_rec=self.track.loc[trade_day]
+        cash_aim=self.fund_scheme(self, trade_day)
+        cash_collected=0
+        for tgt in self.port_tgts:
+            value=track_rec[f'{tgt}_value']
+            self.action_dict[tgt]=-value
+            cash_collected+=value
+            if cash_collected>=cash_aim:
+                break
+        self.trade(trade_day,call_from='!!!FORCE_SELL!!!',price_type='Open')
+        
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    
@@ -253,6 +287,7 @@ class Minerva:
         rolling the whole pipeline 
         wrap the day close and roll to the next day open
         '''
+        yesterday=date+datetime.timedelta(days=-1)
         if track_mark is None:
             track=self.track
             cash_dates=self.cash_dates
@@ -261,43 +296,40 @@ class Minerva:
             track=self.real_track
             cash_dates=self.real_cash_dates
             ini_fund=self.fund_scheme(self, cash_dates[0])
-        if date in self.trading_dates:    
-            self._adjust_value(track, 'Close', date)
+        self._adjust_value(track, 'Close', date, track_mark)
         
         day_total=track.loc[date,'total_value']
-        if not(date==self.dateseries[0]):
-            yesterday=date+datetime.timedelta(days=-1)
-
-            if date in cash_dates:
-                in_fund=self.act_fund
-                track.loc[date, 'daily_return']=day_total/(
-                    track.loc[yesterday,'total_value']+in_fund)
-                track.loc[date, 'norisk_total_value']=(
-                    track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
-            else:
-                track.loc[date, 'daily_return']=day_total/track.loc[yesterday,'total_value']
-                track.loc[date, 'norisk_total_value']=track.loc[yesterday, 'norisk_total_value']*self.NRDR
-        else:
+        if (date==self.dateseries[0]):
             track.loc[date, 'daily_return']=track.loc[date,'total_value']/ini_fund
             track.loc[date, 'norisk_total_value']=ini_fund*self.NRDR
+        else:
+            in_fund=self.act_fund
+            track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
+            track.loc[date, 'norisk_total_value']=(
+                track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
         track['drawdown'] = (
             track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
         
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             track.loc[tmr]=track.loc[date]
-    def _adjust_value(self, track, price_type, date):
+    def _adjust_value(self, track, price_type, date, track_mark=None):
         '''
         adjust value based on open/low/high/close price
         '''
+        trade_day=utils.find_trade_date(date, self.trading_dates)
         track.loc[date,'port_value']=0.0
         for tgt in self.port_tgts:
-            price_rec=self.port_hist[tgt].loc[date]
+            price_rec=self.port_hist[tgt].loc[trade_day]
             price=price_rec[price_type]
             share=track.loc[date,f'{tgt}_share']
             track.loc[date,f'{tgt}_value']=share*price
             track.loc[date,'port_value']+=share*price
-        track.loc[date,'cash']=track.loc[date,'cash']*self.NRDR
+        if price_type=='Close':
+            if self.fund_scheme_name=='financing':
+                track.loc[date,'cash']=track.loc[date,'cash']*self.fin_nrdr
+            else:    
+                track.loc[date,'cash']=track.loc[date,'cash']*self.NRDR
         nav=track.loc[date,'port_value']+track.loc[date,'cash']
         track.loc[date,'total_value']=nav
 
@@ -378,46 +410,61 @@ class Minerva:
             fig_fn=utils.form_scheme_fig_fn(self.cfg,suffix='real')
         utils.write_log(f'{print_prefix}{track_identity} inspect portfolio...')
         track=prudentia.track_inspect(track)
+        '''
         track['drawdown'].where(
             track['drawdown']>-track['fund_change'], other=-track['fund_change'],
             inplace=True)
-
+        '''
         # baseline return
-        track['baseline_return']=track['accum_return']
-        idx_start=self.basehist.index.searchsorted(self.scheme_start_time)
-        base_value=self.basehist.iloc[idx_start]['Close']
-        mkt_value=base_value       
-        for date in self.dateseries:
-            if date in self.trading_dates:
-                mkt_value=self.basehist.loc[date]['Close']
-            track.loc[date, 'baseline_return']=mkt_value/base_value
-        track['baseline_drawdown'] = (
-            track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
-        
+        if self.withbase:
+            track['baseline_return']=track['accum_return']
+            idx_start=self.basehist.index.searchsorted(self.scheme_start_time)
+            base_value=self.basehist.iloc[idx_start]['Close']
+            mkt_value=base_value       
+            for date in self.dateseries:
+                if date in self.trading_dates:
+                    mkt_value=self.basehist.loc[date]['Close']
+                track.loc[date, 'baseline_return']=mkt_value/base_value
+            track['baseline_drawdown'] = (
+                track['baseline_return'].cummax() - track['baseline_return']) / track['baseline_return'].cummax()
+            
         # portfolio performance table
         eval_table=prudentia.strategy_eval(track)
         self.eval_dic=painter.append_dic_table(
             self.eval_dic, eval_table, 
             column_name=track_identity, index_name='Metrics')
-       # last day track
+        # last day track
         lstday_dic=track.iloc[-1].to_dict()
         lstday_dic['accum_return']=lstday_dic['accum_return']-1
-        lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
+         
         lstday_dic['drawdown']=-lstday_dic['drawdown'] 
-        if lstday_dic['baseline_drawdown']>0:
-            lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
-        else:
-            lstday_dic['baseline_drawdown']='N/A'
+        if self.withbase:
+            lstday_dic['baseline_return']=lstday_dic['baseline_return']-1
+            if lstday_dic['baseline_drawdown']>0:
+                lstday_dic['baseline_drawdown']=-lstday_dic['baseline_drawdown'] 
+            else:
+                lstday_dic['baseline_drawdown']='N/A'
         lstday_dic=painter.fmt_dic(lstday_dic)
         self.lastday_dic=painter.append_dic_table(
             self.lastday_dic, lstday_dic,
             column_name=track_identity, index_name='Metrics')
         if self.cfg['POSTPROCESS'].getboolean('visualize'):
             port_colors=self.cfg['POSTPROCESS']['port_colors'].split(',')
-            painter.draw_perform_fig(
-                track, self.port_tgts, fig_fn, port_colors)
+            if self.forward_flag:
+                painter.draw_perform_fig(
+                    track, self.port_tgts, fig_fn, port_colors)
+            else:
+                painter.draw_perform_fig(
+                    track[:-1], self.port_tgts, fig_fn, port_colors,self.withbase)
+        try:
+            if self.cfg['POSTPROCESS'].getboolean('dump_track'):
+                if track_mark is None:
+                    track.to_csv('track.csv')
+                else:
+                    track.to_csv('track_real.csv')
+        except KeyError:
+            pass
         #print(track.iloc[-1])
-
     def trade(self, date, call_from='DCA', price_type='NearOpen'):
         '''
         determine exact position change, for input
@@ -441,7 +488,6 @@ class Minerva:
             price_rec=self.port_hist[tgt].loc[date]
             trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
-            #print(f'cash_inhand:{cash_inhand:.2f},cash_needed:{cash_needed:.2f},share:{share:.0f},trade_price:{trade_price:.2f}')
             if not(share==0):
                 log_data=f'{msg_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\

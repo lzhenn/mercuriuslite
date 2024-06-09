@@ -240,6 +240,15 @@ def cal_days_since_mjdown(date, drawdown, thresh=0.05):
         date_pos=dates[dates.get_loc(date_pos)-1]
     return (date-date_pos).days
 
+def find_trade_date(date, dates):
+    if date in dates:
+        trade_day=date
+    else:
+        idx = np.searchsorted(dates, date, side='left')
+        if idx==len(dates):
+            idx=-1
+        trade_day=dates[idx]
+    return trade_day
 
 def determ_price(price_rec, price_type):
     if price_type in ['High', 'Low', 'Close', 'Open']:

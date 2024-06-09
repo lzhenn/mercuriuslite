@@ -11,7 +11,7 @@ print_prefix='lib.painter>>'
 
 def draw_perform_fig(
     df, tgts, fig_fn, 
-    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey']):
+    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey'],withbase=True):
     # Calculate the daily return rate
 
 
@@ -20,7 +20,7 @@ def draw_perform_fig(
     fig.subplots_adjust(hspace=0)
     # ----------plot 0: NAV timeseries
 
-    total_days=(df.index[-1]-df.index[0]).days
+    total_days=(df.index[-1]-df.index[0]).days+1
     ax[0].plot(df.index, df['accu_fund'], 
         label=f'AccuFund: {utils.fmt_value(df.iloc[-1]["accu_fund"],pos_sign=False)}', 
         color='black', linewidth=1)
@@ -55,13 +55,15 @@ def draw_perform_fig(
     ax[0].set_title('Portfolio Performance valid from '+str(df.index[0].date())+' to '+str(df.index[-1].date())+f' ({total_days} days)')
 
     # ------------plot 1: return rate
-    ax[1].plot(df.index, df['fund_change'], 
-               label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
-               color='red', linewidth=1)
-    cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,total_days),vtype="pct")
-    ax[1].plot(df.index, df['baseline_return']-1, 
-               label=f'Baseline ({utils.fmt_value(df.iloc[-1]["baseline_return"]-1,vtype="pct")}|{cagr_str})',
-               color='orange', linewidth=1)
+    if df.iloc[-1]['accu_fund']>0:
+        ax[1].plot(df.index, df['fund_change'], 
+            label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
+            color='red', linewidth=1)
+    if withbase:
+        cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,total_days),vtype="pct")
+        ax[1].plot(df.index, df['baseline_return']-1, 
+                label=f'Baseline ({utils.fmt_value(df.iloc[-1]["baseline_return"]-1,vtype="pct")}|{cagr_str})',
+                color='orange', linewidth=1)
     twr=df.iloc[-1]["accum_return"]-1
     cagr_str=utils.fmt_value(mathlib.cagr(twr,total_days),vtype="pct")
     ax[1].plot(df.index, df['accum_return']-1, 
@@ -69,7 +71,8 @@ def draw_perform_fig(
                color='blue')
     
     no_risk=df['norisk_total_value']/df['accu_fund']
-    ax[1].plot(df.index, no_risk-1, 
+    if df.iloc[-1]['accu_fund']>0:
+        ax[1].plot(df.index, no_risk-1, 
                label=f'NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
                color='green', linewidth=1.5)
     
@@ -107,10 +110,11 @@ def draw_perform_fig(
         ax[1].set_yscale('linear')
     '''
     # ------------plot 2: maximum drawdown
-    ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', alpha=0.5, 
-        label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
-    ax[2].fill_between(
-        df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
+    if withbase:    
+        ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', alpha=0.5, 
+            label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
+        ax[2].fill_between(
+            df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
     max_str=utils.fmt_value(-df["drawdown"].max(),vtype="pct")
     latest_str=utils.fmt_value(-df["drawdown"].iloc[-1],vtype="pct")
     ax[2].plot(df.index, -df['drawdown'], alpha=0.3, 
@@ -121,17 +125,18 @@ def draw_perform_fig(
     hlines=[(0.0,'black',1,'-'),(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
             (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
             (-0.25,'orange',1,'--'),(-0.3,'red',1,'--')]
-    for hline in hlines:
-        if abs(hline[0])<df['baseline_drawdown'].max():
-            ax[2].axhline(y=hline[0], color=hline[1], linewidth=hline[2], 
-                          linestyle=hline[3])
-   
+    if withbase:
+        for hline in hlines:
+            if abs(hline[0])<df['baseline_drawdown'].max():
+                ax[2].axhline(y=hline[0], color=hline[1], linewidth=hline[2], 
+                            linestyle=hline[3])
+    
     
     ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
     ax[2].set_ylabel('Drawdown')
 
-    # calculate periods when all values are larger than 0
     df['drawperiod'] = (df['drawdown'] > 0)
+    # calculate periods when all values are larger than 0
     df['group'] = (df['drawperiod'] != df['drawperiod'].shift()).cumsum()
     df['period'] = df.groupby('group')['drawperiod'].transform('cumsum')
     df['period'] = df['period'].diff(periods=-1)

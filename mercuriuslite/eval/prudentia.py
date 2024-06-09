@@ -22,7 +22,7 @@ class Prudentia:
         self.portions=portions/portions.sum()
         
         self.ltm_dir=mercurius.ltm_dir
-        self.baseticker=self.cfg['EVALUATOR']['baseticker']
+        self.baseticker=mercurius.baseticker
         self.paras=self.cfg['EVALUATOR']['paras'].replace(' ','').split('/')
         
         self.eval_start_time=utils.parse_intime(

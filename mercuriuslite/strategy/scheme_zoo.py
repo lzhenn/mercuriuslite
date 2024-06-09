@@ -25,7 +25,8 @@
 print_prefix='strategy.zoo>>'
 import numpy as np
 import pandas as pd
-from ..lib import const, utils, mathlib, io
+import os
+from ..lib import const, utils, mathlib
 from . import indicators
 import datetime
 
@@ -247,6 +248,43 @@ def fund_real(minerva, date):
     infund=infund.loc[infund['ticker']=='cash']
     infund=infund['price'].values[0]
     return infund
+
+def fund_financing_init(minerva):
+    try:
+        finfile=minerva.cfg['S_fund_financing']['financing_file']
+        if not(os.path.exists(finfile)):
+            pass
+        else:
+            minerva.FIN_ACT=pd.read_csv(finfile, parse_dates=True, 
+                index_col='Date')
+    except KeyError:
+        pass
+    minerva.fin_nrdr=mathlib.ar2dr(const.NO_RISK_RETURN)
+    minerva.fin_fund=minerva.init_fund 
+def fund_financing(minerva, date):
+    fin_act=minerva.FIN_ACT
+    fund,dep_fund=0,0
+    if date in minerva.cash_dates:
+        fund=-(minerva.track.loc[date]['total_value']-minerva.fin_fund) # minus for outflow
+    if date in fin_act.index:
+        act=fin_act.loc[date]['action']
+        if act=='rate':
+            yoy=float(fin_act.loc[date]['value'])
+            minerva.fin_nrdr=mathlib.ar2dr(yoy)
+            utils.write_log(
+                f'{print_prefix}[FINANCING] Refinancing signal captured, new rate: {utils.fmt_value(yoy,vtype="pct")} on {date.strftime("%Y-%m-%d")}.')
+        elif act=='deposit':
+            dep_fund=float(fin_act.loc[date]['value'])
+            utils.write_log(
+                f'{print_prefix}[FINANCING] Deposit signal captured, flow: {utils.fmt_value(dep_fund,pos_sign=False)} on {date.strftime("%Y-%m-%d")}.')
+            minerva.fin_fund+=dep_fund
+        elif act=='payment':
+            frq=fin_act.loc[date]['value']
+            minerva.cash_dates=utils.gen_date_intervals(
+                minerva.dateseries, frq)
+            utils.write_log(
+                f'{print_prefix}[FINANCING] Payment Frequency signal captured, shift to {frq} on {date.strftime("%Y-%m-%d")}.')
+    return fund+dep_fund # cash out
 def fund_mutable(minerva, date):
     if date==minerva.dateseries[0]:
         return minerva.init_fund
@@ -282,7 +320,6 @@ def fund_dynamic(minerva, date):
 # ================== For cash schemes
 def cash_fixed(minerva, date):
     return const.CASH_IN_HAND
-
 def cash_dynamic(minerva, date):
     # (drawdown, cash_change)
     portion_adj=[
@@ -326,5 +363,5 @@ def norisk_dynamic(minerva, date):
     pretday=date+datetime.timedelta(days=-1)
     while (pretday not in norisk.index) and (pretday>norisk.index[0]):
         pretday=pretday-datetime.timedelta(days=1)
-    NRDR=mathlib.ar2dr(norisk.loc[pretday]['Close']/100*0.8)
+    NRDR=mathlib.ar2dr(norisk.loc[pretday]['Close']/100)
     return NRDR
