@@ -105,6 +105,10 @@ def init_track(dates, tgts):
     track['total_value']=0.0
     track['norisk_total_value']=0.0
     track['daily_return']=1.0
+    track['daily_net_return']=1.0
+    track['lev_value']=0.0
+    track['net_value']=0.0
+    track['lev_ratio']=1.0
     for ticker in tgts:
         track[f'{ticker}_value']=0.0
         track[f'{ticker}_share']=0
@@ -193,6 +197,7 @@ def parse_endtime(dt_str):
         return datetime.datetime.strptime(dt_str, '%Y%m%d')
     else: 
         dt=datetime.datetime.now()
+        '''
         dt_us=dt+datetime.timedelta(days=-1) # eastern time
         ymd=dt_us.strftime('%Y%m%d')
         if ymd in const.HOLIDAYS:
@@ -201,6 +206,7 @@ def parse_endtime(dt_str):
             dt+=datetime.timedelta(days=-1)
         elif dt.weekday() == 0:
             dt+=datetime.timedelta(days=-2)
+        '''
     return dt
 
 def parse_file_names(fns):
@@ -272,7 +278,11 @@ def fmt_value(val, vtype='usd', pos_sign=True):
     if vtype=='usd':
         fmt_val=f'${val:.2f}'
         if pos_sign and val>0:
-            fmt_val=f'+\${val:.2f}'
+            fmt_val=f'+${val:.2f}'
+    elif vtype=='cny':
+        fmt_val=f'{val:.2f}元'
+        if pos_sign and val>0:
+            fmt_val=f'+{val:.2f}元'
     elif vtype=='pct':
         if val>=0:
             if pos_sign:
@@ -285,7 +295,26 @@ def fmt_value(val, vtype='usd', pos_sign=True):
         fmt_val=f'{val:.2f}'
     else:
         fmt_val=val
-    return fmt_val 
+    return fmt_val
+
+def frq_to_frqCN(frq): 
+    if frq=='none':
+        fin_pay_frq='总额累积（最终还款日一次性付息）'
+    elif frq=='QS':
+        fin_pay_frq='季度支付（每季度付息一次）'
+    elif frq=='MS':
+        fin_pay_frq='月度支付（每月付息一次）'
+    elif frq=='M':
+        fin_pay_frq='月度支付（每月末付息一次）'
+    elif frq=='2QS':
+        fin_pay_frq='半年支付（每半年付息一次）'
+    elif frq=='YS':
+        fin_pay_frq='年度支付（每年付息一次）' 
+    elif frq=='W':
+        fin_pay_frq='周支付（每周付息一次）'
+    elif frq=='D':
+        fin_pay_frq='日支付（每日付息一次）'
+    return fin_pay_frq 
 # ---Unit test---
 if __name__ == '__main__':
     pass

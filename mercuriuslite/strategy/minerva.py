@@ -4,7 +4,7 @@
 print_prefix='strategy.minerva>>'
 
 # ---imports---
-from ..lib import utils, io, const, painter, messenger, mathlib
+from ..lib import utils, io, const, painter, messenger
 from ..eval import prudentia 
 from . import scheme_zoo 
 import datetime
@@ -58,7 +58,7 @@ class Minerva:
             self.real_prefix=''
         elif cfg['SCHEMER'].getboolean('forward_flag'):
             self.forward_flag=True
-            self.real_prefix='[REAL]'
+            self.real_prefix='[*REAL_ACCOUNT*]'
             self.real_acc=io.load_real_acc(self.cfg['SCHEMER']['real_acc_file'])
             
             self.scheme_start_time=utils.parse_intime(
@@ -80,6 +80,7 @@ class Minerva:
         self._load_portfolio()
         
         self.eval_dic,self.lastday_dic={},{}
+        self.att_dic={}
         
         # cash flow        
         self.cash_flow=float(cfg['SCHEMER']['cash_flow'])
@@ -92,6 +93,7 @@ class Minerva:
         # rebalance
         self.balance_dates=utils.gen_date_intervals(
             self.dateseries, cfg['SCHEMER']['rebalance_frq'])
+        
         # LZN Debug
         if not(self.balance_dates==[]):
             self.balance_dates.append(self.scheme_end_time)
@@ -99,14 +101,37 @@ class Minerva:
        
         # no risk
         if self.norisk_scheme_name=='dynamic':
-            self.noriskhist=io.load_hist(self.db_path, '^IRX')
+            self.noriskhist=io.load_hist(self.db_path, '^IRX_daily',add_pseudo=True)
         # operation records
         self.operation_df=utils.init_operation_df()
         
         # financing account
         if self.fund_scheme_name=='financing':
+            self.meta_dic=io.load_msg('financing_meta.json')
             scheme_zoo.fund_financing_init(self)        
-            
+        
+        # leverage
+        self.lev_flag=False
+        self.lev_fund_flow=0.0
+        self.lev_ratio=1.0
+        if self.cfg.has_option('SCHEMER','use_leverage'):
+            self.lev_flag=self.cfg['SCHEMER'].getboolean('use_leverage')
+            if self.lev_flag:
+                self.lev_scheme_name=cfg['LEVERAGE']['lev_scheme_name']
+                self.lev_scheme = getattr(scheme_zoo, 'lev_'+self.lev_scheme_name)
+                self.lev_ratio=float(cfg['LEVERAGE']['lev_ratio'])/100
+                self.lev_flow=float(cfg['LEVERAGE']['flow'])
+                self.lev_interest_name=cfg['LEVERAGE']['interest_scheme'] 
+                self.lev_interest_scheme = getattr(scheme_zoo, 'lev_interest_'+self.lev_interest_name)
+                self.lev_acc_fund=0.0
+                self.lev_acc_paid=0.0
+                self.lev_acc_unpaid=0.0
+                self.lev_dates=utils.gen_date_intervals(
+                    self.dateseries, cfg['LEVERAGE']['lev_frq'])
+  
+                self.lev_interest_dates=utils.gen_date_intervals(
+                    self.dateseries, cfg['LEVERAGE']['interest_pay_frq'])
+
     def _load_portfolio(self):
         self.port_hist, self.port_model, self.port_meta={},{},{}
         for tgt, model_name in zip(self.port_tgts,self.model_names):
@@ -130,10 +155,13 @@ class Minerva:
         utils.write_log(
             f'{print_prefix}{const.HLINE}{self.real_prefix}ACCOUNT EVOLVE: {start_day.strftime("%Y-%m-%d")} START{const.HLINE}')
         self._init_portfolio()
-        
-        # -----------------backtrace-------------------
+         
+        # -----------------!!!BACKTRACE KERNEL!!!-------------------
         for date in self.dateseries:
             self._event_process(date)
+            if self.bankruptcy_flag:
+                return
+       # -----------------!!!BACKTRACE KERNEL!!!-------------------
         
         utils.write_log(
             f'{print_prefix}{const.HLINE}{self.real_prefix}ACCOUNT EVOLVE: {end_day.strftime("%Y-%m-%d")} END{const.HLINE}')
@@ -143,6 +171,8 @@ class Minerva:
         if self.forward_flag:
             self.inspect(track_mark='real')
             self.msg_handler()
+        if self.fund_scheme_name=='financing':
+            self.financing_msg_hdler()
         self.operation_df.to_csv(
             self.cfg['SCHEMER']['out_operation_file'], index=False)
     
@@ -153,7 +183,8 @@ class Minerva:
         if self.forward_flag:
             self.real_track=utils.init_track(date_series, self.port_tgts)
 
-   
+        self.bankruptcy_flag=False
+            
     def _event_process(self, date):
         '''
         listen to events: 
@@ -163,6 +194,7 @@ class Minerva:
         '''
         #utils.write_log(f'{print_prefix}-------------BACKTESTING: {date.strftime("%Y-%m-%d")} START-----------')
         self._on_kickoff(date)
+        self._on_leverage(date)
         self._on_funding(date)
         self._on_rebalance(date)
         self._on_trade(date)
@@ -173,31 +205,94 @@ class Minerva:
     def _on_kickoff(self, date):
         # daily kickoff signal
         self.NRDR=self.norisk_scheme(self,date)
-        if self.fund_scheme_name=='financing':
-            pass
+    
+    def _on_leverage(self, date):
+        if not(self.lev_flag):
+            return
+        if date==self.dateseries[0]:
+            self.lev_acc_fund=scheme_zoo.leverage_init(self, self.lev_scheme_name)
+            self.lev_fund_flow=self.lev_acc_fund
+            self.track.loc[date,'lev_value']=self.lev_acc_fund
+            utils.write_log(f'{print_prefix}[ON_LEVERAGE] -!LEVERAGED STRATEGY!- ratio: {utils.fmt_value(self.lev_ratio,"pct",False)},'+\
+                f'fund: {utils.fmt_value(self.lev_acc_fund,pos_sign=False)}.')
+        else:
+            yesterday=date+datetime.timedelta(days=-1)
+            ir=self.lev_interest_scheme(self, date)
+            self.track.loc[date, 'lev_value']=self.track.loc[yesterday, 'lev_value']*ir
+            self.lev_acc_unpaid+=self.track.loc[date, 'lev_value']-self.track.loc[yesterday, 'lev_value']
+            self.lev_fund_flow=0.0
+            
+        if date in self.lev_dates: # leverage inflow
+            flow=self.lev_scheme(self, date)
+            self.lev_fund_flow=flow
+            if flow>0:
+                self.new_fund=True    
+                self.lev_acc_fund+=flow
+                for itm in ['cash','lev_value','accu_fund','total_value']:
+                    self.track.loc[date, itm]+=flow
+                self._feed_operation(date, 'cash', np.nan, flow)
+                lr=self.track.loc[date,'total_value']/self.track.loc[date,'net_value']
+                utils.write_log(
+                    f'{print_prefix}[ON_LEVERAGE] Financing flow signal captured,'+\
+                    f' flow:{utils.fmt_value(flow,pos_sign=False)},'+\
+                    f' total flow:{utils.fmt_value(self.lev_acc_fund,pos_sign=False)},'+\
+                    f' leveraged fund:{utils.fmt_value(self.track.loc[date,"lev_value"])} ({utils.fmt_value(lr,"pct")})'+\
+                    f' on {date.strftime("%Y-%m-%d")}')  
+        if date in self.lev_interest_dates: # pay interest
+            if self.track.loc[date, 'cash']<self.lev_acc_unpaid:
+                self._adjust_value(self.track, 'Open', date)
+                if self.track.loc[date, 'total_value']>self.lev_acc_unpaid:
+                    self._force_sell(date, self.lev_acc_unpaid)
+                else:                    
+                    self.bankruptcy_flag=True
+                    utils.write_log(f'{print_prefix}[ON_LEVERAGE]**!!!BANKRUPTCY!!!** Unable to pay leverage interest'+\
+                        f'{utils.fmt_value(self.lev_acc_unpaid)} on {date.strftime("%Y-%m-%d")}.')
+                    return
+            for itm in ['cash','lev_value','accu_fund','total_value']:
+                self.track.loc[date, itm]-=self.lev_acc_unpaid
+            self.lev_acc_paid+=self.lev_acc_unpaid
+            self._feed_operation(date, 'cash', np.nan, self.lev_acc_unpaid) 
+            lr=self.track.loc[date,'total_value']/self.track.loc[date,'net_value']
+            utils.write_log(
+                f'{print_prefix}[ON_LEVERAGE] Interest payment signal captured,'+\
+                f' pay:{utils.fmt_value(self.lev_acc_unpaid,pos_sign=False)},'+\
+                f' total paid:{utils.fmt_value(self.lev_acc_paid,pos_sign=False)},'+\
+                f' leveraged fund:{utils.fmt_value(self.track.loc[date,"lev_value"])} ({utils.fmt_value(lr,"pct")})'+\
+                f' on {date.strftime("%Y-%m-%d")}')             
+            self.lev_acc_unpaid=0.0
+
     def _on_funding(self, date):
         act_flow=0
         
         if date==self.dateseries[0]:
             act_flow=self.init_fund
             getattr(scheme_zoo, self.scheme_name+'_init')(self, date)
+            self.new_fund=True
+            self.acc_act_fund=act_flow/self.lev_ratio
+            self.acc_out_fund=0.0
         # financing account, could deposit/withdraw anytime
         elif self.fund_scheme_name=='financing':
             act_flow=self.fund_scheme(self, date)
         elif date in self.cash_dates:
             act_flow=self.fund_scheme(self, date)
+            self.new_fund=True
+            # accumulate new funding
+            self.acc_act_fund+=max(act_flow,0)
          
         if act_flow<0:
             if  self.track.loc[date, 'cash']+act_flow<0:
                 self._adjust_value(self.track, 'Open', date)
                 if self.track.loc[date, 'total_value']>abs(act_flow):
-                    self._force_sell(date)
+                    self._force_sell(date, abs(act_flow))
                 else:
-                    act_flow=0
-        
+                    self.bankruptcy_flag=True
+                    utils.write_log(f'{print_prefix}[ON_FUNDING]**!!!BANKRUPTCY!!!** Unable to pay periodic outflow funding'+\
+                        f'{utils.fmt_value(act_flow)} on {date.strftime("%Y-%m-%d")}.')
+                    return
+            self.acc_out_fund+=act_flow
         # new funding 
-        self.act_fund=act_flow
-        
+        self.act_fund_flow=act_flow
+       
         if act_flow!=0:
             # deal with new funding 
             self.track.loc[date, 'cash']+=act_flow
@@ -205,14 +300,14 @@ class Minerva:
             self.track.loc[date, 'accu_fund']+=act_flow
             self._feed_operation(date, 'cash', np.nan, act_flow)
             
-            self.new_fund=True
-            msg_log=f'[PROPOSED] Funding signal captured, current fund:'+\
+            msg_log=f'[ON_FUNDING] Funding signal captured, current fund:'+\
                 f'{utils.fmt_value(self.track.loc[date,"accu_fund"],pos_sign=False)} ({utils.fmt_value(act_flow,pos_sign=False)})'+\
-                f', cash_in_hand: {utils.fmt_value(self.track.loc[date,"cash"],pos_sign=False)} on {date.strftime("%Y-%m-%d")}'
+                f', cash left: {utils.fmt_value(self.track.loc[date,"cash"],pos_sign=False)} on {date.strftime("%Y-%m-%d")}'
             utils.write_log(print_prefix+msg_log)
         
         # deal with real account
         if self.forward_flag:
+            self.real_act_fund_flow=0
             # forward feed lastday msg
             if date==self.dateseries[-1] and self.new_fund:
                 self.msg_dic=utils.feed_msg_title(
@@ -221,7 +316,7 @@ class Minerva:
  
             if date in self.real_cash_dates:
                 real_flow=scheme_zoo.fund_real(self, date)
-                self.real_act_fund=real_flow
+                self.real_act_fund_flow=real_flow
                 self.real_track.loc[date, 'cash']+=real_flow
                 self.real_track.loc[date, 'total_value']+=real_flow
                 self.real_track.loc[date, 'accu_fund']+=real_flow
@@ -229,19 +324,6 @@ class Minerva:
                     f'{print_prefix}{self.real_prefix}Funding signal captured, current fund:'+\
                     f'{utils.fmt_value(self.real_track.loc[date,"accu_fund"])} (+{utils.fmt_value(real_flow)})'+\
                     f' on {date.strftime("%Y-%m-%d")}')
-    def _force_sell(self, date):
-        trade_day=utils.find_trade_date(date, self.trading_dates)
-        track_rec=self.track.loc[trade_day]
-        cash_aim=self.fund_scheme(self, trade_day)
-        cash_collected=0
-        for tgt in self.port_tgts:
-            value=track_rec[f'{tgt}_value']
-            self.action_dict[tgt]=-value
-            cash_collected+=value
-            if cash_collected>=cash_aim:
-                break
-        self.trade(trade_day,call_from='!!!FORCE_SELL!!!',price_type='Open')
-        
     def _on_rebalance(self, date):
         if (date in self.balance_dates) or (self.defer_balance):
             if date in self.trading_dates:    
@@ -254,7 +336,7 @@ class Minerva:
     def _rebalance(self,date):
         track_rec=self.track.loc[date]
         utils.write_log(
-            f'{print_prefix}[PROPOSED] Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
+            f'{print_prefix}[ON_REBALANCE] Rebalance signal captured on {date.strftime("%Y-%m-%d")}.')
         port_dic=self.pos_scheme(self, date)
         total_value=track_rec['total_value']
         for tgt in self.port_tgts:
@@ -269,7 +351,6 @@ class Minerva:
         self.defer_balance=False 
        
     def _on_trade(self, date):
-        #if (date in self.trading_dates):
         if (date in self.trading_dates):
             self.strategy(self, date) # even without newfund, strategy-based trading exists 
             self.new_fund=False
@@ -278,6 +359,7 @@ class Minerva:
                 self.trade_real(date)
            
     def _feed_operation(self, date, tgt, share, price):
+        '''feed operation to operation dataframe'''
         date=date.strftime("%Y%m%d")
         new_row = {'Date': date, 'ticker': tgt, 'share': share, 'price': price}
         self.operation_df=self.operation_df.append(new_row, ignore_index=True)
@@ -296,24 +378,52 @@ class Minerva:
             track=self.real_track
             cash_dates=self.real_cash_dates
             ini_fund=self.fund_scheme(self, cash_dates[0])
-        self._adjust_value(track, 'Close', date, track_mark)
+        self._adjust_value(track, 'Close', date)
         
+        
+               
         day_total=track.loc[date,'total_value']
+        day_lev=track.loc[date,'lev_value']
+        track.loc[date,'net_value']=day_total-day_lev
+        day_net=track.loc[date,'net_value']
+        
+        # add leveraged tickers to calculate leverage ratio
+        lev_tikcer_value=0
+        for tgt in self.port_tgts:
+            if tgt in const.LEV_TICKERS:
+                lev_port=(const.LEV_TICKERS[tgt]-1.0)
+                lev_tikcer_value+=lev_port*track.loc[date,f'{tgt}_value']
+        track.loc[date,'lev_ratio']=(day_total+lev_tikcer_value)/day_net
+
+
         if (date==self.dateseries[0]):
-            track.loc[date, 'daily_return']=track.loc[date,'total_value']/ini_fund
+            track.loc[date, 'daily_return']=day_total/ini_fund
+            track.loc[date,'daily_net_return']=(day_total-day_lev)/day_net
             track.loc[date, 'norisk_total_value']=ini_fund*self.NRDR
         else:
-            in_fund=self.act_fund
+            if track_mark is None:
+                in_fund=self.act_fund_flow+self.lev_fund_flow # 0 in non-funding day
+                net_fund=self.act_fund_flow
+            else:
+                in_fund=self.real_act_fund_flow
+                net_fund=in_fund
+            
             track.loc[date, 'daily_return']=day_total/(track.loc[yesterday,'total_value']+in_fund)
+            track.loc[date,'daily_net_return']=(day_net/(track.loc[yesterday,'net_value']+net_fund))
             track.loc[date, 'norisk_total_value']=(
-                track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
-        track['drawdown'] = (
+            track.loc[yesterday, 'norisk_total_value']+in_fund)*self.NRDR
+            track['drawdown'] = (
             track['total_value'].cummax() - track['total_value']) / track['total_value'].cummax()
-        
+        track['net_drawdown'] = (
+            track['net_value'].cummax() - track['net_value']) / track['net_value'].cummax()
+        if day_net < 0: 
+            self.bankruptcy_flag=True
+            utils.write_log(f'{print_prefix}[ON_ROLLING]**!!!BANKRUPTCY!!!** NAV: {utils.fmt_value(day_net)} on {date.strftime("%Y-%m-%d")}')
+            return
         if not(date==self.dateseries[-1]):
             tmr=date+datetime.timedelta(days=1)
             track.loc[tmr]=track.loc[date]
-    def _adjust_value(self, track, price_type, date, track_mark=None):
+    def _adjust_value(self, track, price_type, date):
         '''
         adjust value based on open/low/high/close price
         '''
@@ -327,12 +437,28 @@ class Minerva:
             track.loc[date,'port_value']+=share*price
         if price_type=='Close':
             if self.fund_scheme_name=='financing':
+                self.fin_daily_interest=track.loc[date,'cash']*(self.fin_nrdr-1.0)
                 track.loc[date,'cash']=track.loc[date,'cash']*self.fin_nrdr
             else:    
                 track.loc[date,'cash']=track.loc[date,'cash']*self.NRDR
-        nav=track.loc[date,'port_value']+track.loc[date,'cash']
-        track.loc[date,'total_value']=nav
+        total=track.loc[date,'port_value']+track.loc[date,'cash']
+        track.loc[date,'total_value']=total
 
+    def _force_sell(self, date, cash_aim):
+        track_rec=self.track.loc[date]
+        cash_collected=0
+        for tgt in self.port_tgts:
+            value=track_rec[f'{tgt}_value']
+            if value > cash_aim:
+                self.action_dict[tgt]=-cash_aim
+                break
+            else:
+                self.action_dict[tgt]=-value
+                cash_collected+=value
+            if cash_collected>=cash_aim:
+                break
+        self.trade(date,call_from='!FORCE_SELL!',price_type='Open')
+ 
     def _parse_ticker_perform(self):
         self.ticker_perform_dic={
             'header':['Tickers', 'Price', 'ShortLag', 'LongLag', 'Shares', 'Value',
@@ -394,6 +520,7 @@ class Minerva:
             utils.write_log(
                     f'{print_prefix}{self.real_prefix}Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
+                    f' cash:{track.loc[date,"cash"]:.2f}USD'+\
                     f' on {date.strftime("%Y-%m-%d")}')
     
     def inspect(self,track_mark=None):
@@ -449,13 +576,28 @@ class Minerva:
             self.lastday_dic, lstday_dic,
             column_name=track_identity, index_name='Metrics')
         if self.cfg['POSTPROCESS'].getboolean('visualize'):
-            port_colors=self.cfg['POSTPROCESS']['port_colors'].split(',')
+            
+            self._form_att_dic()
+            try:
+                port_colors=self.cfg['POSTPROCESS']['port_colors'].split(',')
+            except KeyError:
+                port_colors=const.PORT_COLORS
+            
             if self.forward_flag:
-                painter.draw_perform_fig(
-                    track, self.port_tgts, fig_fn, port_colors)
+                if track_mark is None:
+                    painter.draw_perform_fig(
+                        track, self.port_tgts, fig_fn, port_colors, att_dic=self.att_dic)
+                else:
+                    painter.draw_perform_fig(
+                        track, self.port_tgts, fig_fn, port_colors)
             else:
+                if self.fund_scheme_name=='financing':
+                    financing_flag=True
+                else:
+                    financing_flag=False
                 painter.draw_perform_fig(
-                    track[:-1], self.port_tgts, fig_fn, port_colors,self.withbase)
+                    track[:-1].copy(), self.port_tgts, fig_fn, port_colors,
+                    self.withbase, financing_flag, self.lev_flag, self.att_dic)
         try:
             if self.cfg['POSTPROCESS'].getboolean('dump_track'):
                 if track_mark is None:
@@ -475,22 +617,33 @@ class Minerva:
         '''
         #self.risk_manage(date)
         track=self.track
-        msg_prefix='[PROPOSED]'
+        msg_prefix='[ON_TRADE]'
+        trade_day=utils.find_trade_date(date, self.trading_dates)
+        if trade_day != date:
+            utils.write_log(f'{print_prefix}{msg_prefix} Trade day shift: {date} -> {trade_day}')
         #[('SPXL', -Val), ('SPY', Val)]
         cash_needed=sum(self.action_dict.values())
         cash_inhand=track.loc[date,'cash']
         adj_ratio=1.0
-        if cash_inhand<cash_needed:
+        if cash_needed>0 and cash_inhand<cash_needed:
             adj_ratio=cash_inhand/cash_needed
         act_tgt_lst = sorted(self.action_dict.items(), key=lambda x:x[1])
         for act_tgt in act_tgt_lst:
             tgt,val=act_tgt[0],act_tgt[1]*adj_ratio
-            price_rec=self.port_hist[tgt].loc[date]
+            price_rec=self.port_hist[tgt].loc[trade_day]
             trade_price=utils.determ_price(price_rec, price_type)
             share, cash_fra=utils.cal_trade(trade_price, val)
             if not(share==0):
-                log_data=f'{msg_prefix}**{call_from}**Trade signal captured:{share:.0f} shares'+\
+                track.loc[date,f'{tgt}_share']+=share
+                track.loc[date,f'{tgt}_value']+=share*trade_price
+                track.loc[date,'port_value']+=share*trade_price
+                track.loc[date,'cash']-=share*trade_price
+                self._feed_operation(date, tgt, share, trade_price)
+
+                # write log
+                log_data=f'{msg_prefix} -{call_from}- Trade signal captured:{share:.0f} shares'+\
                     f' of {tgt}@{trade_price:.2f}({share*trade_price:.2f}USD)'+\
+                    f' cash left:{track.loc[date,"cash"]:.2f}USD'+\
                     f' on {date.strftime("%Y-%m-%d")}'
                 
                 # forward feed lastday msg
@@ -502,16 +655,26 @@ class Minerva:
                 
                 utils.write_log(print_prefix+log_data)
 
-                track.loc[date,f'{tgt}_share']+=share
-                track.loc[date,f'{tgt}_value']+=share*trade_price
-                track.loc[date,'port_value']+=share*trade_price
-                track.loc[date,'cash']-=share*trade_price
-                self._feed_operation(date, tgt, share, trade_price)
         track.loc[date,'total_value']= track.loc[date,'port_value']+track.loc[date,'cash']
         for tgt in self.port_tgts:
             self.action_dict[tgt]=0.0
 
- 
+    def _form_att_dic(self):
+        track=self.track
+        self.att_dic={
+            'scheme_name':self.scheme_name,
+            'init_total_asset':track.iloc[0]['total_value'],
+            'total_nonlev_inflow':self.acc_act_fund,
+            'total_nonlev_outflow':self.acc_out_fund,
+            'norisk_scheme':self.norisk_scheme_name,
+            'fund_scheme':self.fund_scheme_name,
+        }
+        if self.lev_flag:
+            self.att_dic+={'init_net_asset':track.iloc[0]['net_value'],
+            'init_lev_asset':track.iloc[0]['lev_value'],
+            'total_lev_inflow':self.lev_acc_fund,
+            'total_lev_paid_interest':self.lev_acc_paid}
+
     def msg_handler(self):
         
         # portfolio performance
@@ -536,6 +699,27 @@ class Minerva:
             self.real_acc.sort_values(by='Date',ascending=False).iloc[0:10],table_fmt='html')
         self.msg_dic=utils.feed_msg_body(self.msg_dic, f'<h2>Real Operations</h2>{tb_msg}')
         
+        # form msg all
+        title, content=utils.form_msg(self.msg_dic)
+        io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)
+        
+        
+        if self.cfg['SCHEMER'].getboolean('send_msg'):
+            messenger.gmail_send_message(self.cfg, title, content)
+    
+    def financing_msg_hdler(self):
+        roll_date=self.dateseries[-1]
+        self.msg_dic=utils.feed_msg_body(
+            self.msg_dic, f'<h2>借款合约每日结算报告（截至{roll_date.strftime("%Y年%m月%d日")}）</h2>')
+        meta_dic=self.meta_dic
+        meta_dic=messenger.parse_financing_meta(self, meta_dic)
+        self.msg_dic['title_lst'].append(meta_dic['借款合约编号'])
+        tb_msg=painter.dic2html_CN(meta_dic)
+        self.msg_dic=utils.feed_msg_body(self.msg_dic, tb_msg)
+        if self.fin_sup_contract !='': 
+            self.msg_dic=utils.feed_msg_body(
+                self.msg_dic, f'<h3>合约补充条款（截至{roll_date.strftime("%Y年%m月%d日")}）</h3>')        
+            self.msg_dic=utils.feed_msg_body(self.msg_dic, self.fin_sup_contract)
         # form msg all
         title, content=utils.form_msg(self.msg_dic)
         io.archive_msg(self.cfg['SCHEMER']['out_msg_file'], title, content)

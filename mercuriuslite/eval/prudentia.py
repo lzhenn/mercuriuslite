@@ -130,11 +130,16 @@ def vector_eval(track, hist, tgt, price_tgt='Close', cash2use=10000):
     return track
 
 def track_inspect(track):
-    track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']   
+    # Total gain relative to accu in/out fund 
+    track['fund_change']=(track['total_value']-track['accu_fund'])/track['accu_fund']
     track['daily_return']=np.log(track['daily_return'])
     track['accum_return']=np.exp(track['daily_return'].cumsum())
+    track['daily_net_return']=np.log(track['daily_net_return'])
+    track['accum_net_return']=np.exp(track['daily_net_return'].cumsum())
     track['drawdown'] = (
         track['accum_return'].cummax() - track['accum_return']) / track['accum_return'].cummax()
+    track['net_drawdown'] = (
+        track['accum_net_return'].cummax() - track['accum_net_return']) / track['accum_net_return'].cummax()
     return track
 
 def baseline_inspect(track, basehist):

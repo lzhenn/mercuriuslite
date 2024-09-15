@@ -13,7 +13,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from . import utils
+from . import utils, mathlib
 SCOPES = ['https://mail.google.com/']
 
 def gmail_send_message(cfg, title, content):
@@ -77,6 +77,31 @@ def gmail_send_message(cfg, title, content):
         send_message = None
     return send_message
 
-
+def parse_financing_meta(minerva, meta_dic):
+    try:
+        nominate_curr=minerva.cfg['S_fund_financing']['nominated_currency'].lower()
+    except KeyError:
+        nominate_curr='cny'
+    track=minerva.track
+    meta_dic['约定年化利率']=utils.fmt_value(
+        mathlib.dr2ar(minerva.fin_nrdr)-1,vtype='pct')
+    #meta_dic['付息频率']=fin_act.loc[fin_act['action']=='payment']['value'].values[0]
+    meta_dic['今日应记利息']=utils.fmt_value(minerva.fin_daily_interest,vtype=nominate_curr)
+    meta_dic['当前本金结余']=utils.fmt_value(
+        minerva.fin_fund,vtype=nominate_curr,pos_sign=False)
+    meta_dic['当前出借天数']=str((track.index[-1]-track.index[0]).days+1)+'天'
+    meta_dic['约定付息频率']=minerva.fin_pay_frq
+    meta_dic['当前本息总额']=utils.fmt_value(
+        minerva.fin_fund+minerva.fin_acc_unpaid,vtype=nominate_curr,pos_sign=False)    
+    meta_dic['累积已付利息']=utils.fmt_value(
+        minerva.fin_acc_pay,vtype=nominate_curr)
+    meta_dic['当前未付利息']=utils.fmt_value(
+        minerva.fin_acc_unpaid,vtype=nominate_curr) 
+    meta_dic['累积本息总额']=utils.fmt_value(
+        minerva.fin_fund+minerva.fin_acc_pay+minerva.fin_acc_unpaid,vtype=nominate_curr,pos_sign=False)    
+    meta_dic['累积总回报率']=utils.fmt_value(
+        track.iloc[-1]["accum_return"]-1,vtype='pct')+' （时间加权）'
+    return meta_dic
+    
 if __name__ == '__main__':
     gmail_send_message()

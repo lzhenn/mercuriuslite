@@ -3,7 +3,10 @@
 # ---imports---
 import yfinance as yf
 import os, shutil
-from . import utils, io
+from . import utils, io, mathlib
+from datetime import date
+import pandas as pd
+import numpy as np
 # ---Module regime consts and variables---
 print_prefix='lib.crawler>>'
 
@@ -23,6 +26,8 @@ class Andariel:
         if not os.path.exists(self.archive_dir):
             os.makedirs(self.archive_dir)
         for ticker in self.tickers:
+            if ticker=='GCF':
+                ticker='GC=F'
             utils.write_log(f'{print_prefix}Fetching {ticker}...')
             ticker_hdl=yf.Ticker(ticker)
             if type=='div':
@@ -40,7 +45,8 @@ class Andariel:
             os.makedirs(self.ltm_dir)
         
         for ticker in self.tickers:
-
+            if ticker=='GCF':
+                ticker='GC=F'
             realtime_fn=os.path.join(self.archive_dir,ticker+'.csv')
             ltm_fn=os.path.join(self.ltm_dir,ticker+'.csv')
                 
@@ -71,6 +77,41 @@ class Andariel:
 
                 # Save the updated longterm data to file
                 longterm_df.to_csv(ltm_fn)
+    def gen_7x24_series(self, ticker='BLV'):
+        '''
+        generate 7x24 series from historical ticker 
+        '''
+        if ticker=='GCF':
+            ticker='GC=F'
+ 
+        daily_fn=os.path.join(self.ltm_dir,ticker+'_daily.csv')
+        
+        df=io.load_hist(self.ltm_dir, ticker)
+        end_date = pd.to_datetime(date.today())
+        # Fill missing dates until today
+        new_df = df.asfreq('D').reindex(
+            pd.date_range(start=df.index.min(), end=end_date, freq='D')).ffill()
+        new_df.to_csv(daily_fn,  index_label='Date') 
+
+
+    def gen_accum_series(self, ticker='^IRX'):
+        '''
+        generate accumulative series from historical ^IRX or ^TNX
+        '''
+        ltm_fn=os.path.join(self.ltm_dir,ticker+'_accum.csv')
+        daily_fn=os.path.join(self.ltm_dir,ticker+'_daily.csv')
+        
+        df=io.load_hist(self.ltm_dir, ticker)
+        end_date = pd.to_datetime(date.today())
+        # Fill missing dates until today
+        new_df = df.asfreq('D').reindex(
+            pd.date_range(start=df.index.min(), end=end_date, freq='D')).ffill()
+        for tgt in ['Open','High','Low','Close']:
+            new_df[tgt]=mathlib.ar2dr(new_df[tgt]/100) 
+        
+        new_df.to_csv(daily_fn,  index_label='Date') 
+        nav=np.cumprod(new_df)
+        nav.to_csv(ltm_fn,  index_label='Date') 
 
 # ---Unit test---
 if __name__ == '__main__':

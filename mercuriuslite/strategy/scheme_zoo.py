@@ -4,6 +4,8 @@
 # ****************Available strategies*****************
 #   --Portfolio
 #       buy_and_hold
+#       ma_cross       
+#       grid_trading
 #
 #   --position
 #       pos_prescribe
@@ -21,6 +23,9 @@
 #       norisk_fixed
 #       norisk_dynamic
 #
+#   --leverage
+#       lev_fixed_ratio
+#       lev_fixed_flow
 # ****************Available models*****************
 print_prefix='strategy.zoo>>'
 import numpy as np
@@ -30,12 +35,43 @@ from ..lib import const, utils, mathlib
 from . import indicators
 import datetime
 
-# ------------------------Buy and Hold------------------------
+# ================== For leverage schemes ===================
+
+def leverage_init(minerva, scheme_name):
+    lev_fund=minerva.init_fund*(1.0-1.0/minerva.lev_ratio)
+    return lev_fund
+def lev_fixed_ratio(minerva, date):
+    track=minerva.track
+    flow=minerva.lev_flow
+    lr=track.loc[date, 'total_value']/track.loc[date, 'net_value']
+    flow=track.loc[date, 'net_value']*(minerva.lev_ratio-lr)
+    return max(flow,0)
+def lev_fixed_flow(minerva, date):
+    track=minerva.track
+    flow=minerva.lev_flow
+    lr=track.loc[date, 'total_value']/track.loc[date, 'net_value']
+    if lr>minerva.lev_ratio:
+        return 0
+    else:
+        return flow
+def lev_interest_fixed(minerva, date):
+    LEV_DR=mathlib.ar2dr(const.LEVERAGE_INTEREST)
+    return LEV_DR
+
+def lev_interest_dynamic(minerva, date):
+    norisk=minerva.noriskhist
+    lev_dr=norisk.loc[date]['Close']
+    return lev_dr
+
+
+# ------------------------PORTFOLIO - Buy and Hold------------------------
 
 def buy_and_hold_init(minerva, date):
     pass
 def buy_and_hold(minerva, date):
     ''' buy and hold strategy'''
+    if not(minerva.new_fund):
+        return
     port_rec=minerva.track.loc[date]
     cash = port_rec['cash']
     #cash_portion=cash_fixed(minerva, date)
@@ -51,7 +87,7 @@ def buy_and_hold_rebalance(minerva, date):
     return minerva.action_dict
 
 
-# ------------------------MA_CROSS------------------------
+# ------------------------PORTFOLIO - MA_CROSS------------------------
 def ma_cross_init(minerva, date):
     minerva.paras=minerva.cfg['S_ma_cross']['paras'].replace(' ','').split('/')
     minerva.price_type=minerva.cfg['S_ma_cross']['trade_price_type']
@@ -67,6 +103,7 @@ def ma_cross_init(minerva, date):
     # pseudo date for realtime trading
     #trading_dates_ext=trading_dates.append(
     #    pd.DatetimeIndex([trading_dates[-1]+datetime.timedelta(days=1)]))
+    #print(port_dic)
     for idx, tgt in enumerate(minerva.port_tgts):
         idx_start=minerva.port_hist[tgt].index.searchsorted(date)
         ma_para_list=minerva.paras[idx].replace(' ','').split(',')
@@ -108,7 +145,7 @@ def ma_cross(minerva, date):
         if nexpose > 0:
             for idx,tgt in enumerate(minerva.port_tgts):
                 if port_flag[idx]:
-                    minerva.action_dict[tgt]+=minerva.act_fund/nexpose
+                    minerva.action_dict[tgt]+=minerva.act_fund_flow/nexpose
             minerva.trade(date, call_from='DCA',price_type=price_type)
         return
     if ma_flag:
@@ -129,7 +166,7 @@ def ma_cross_rebalance(minerva, date):
         else:
             action_dict[tgt]=0
     return action_dict
-# ------------------------GRID_TRADING------------------------
+# ------------------------PORTFOLIO - GRID_TRADING------------------------
 def grid_trading_init(minerva, date):
     gridlist=minerva.cfg['S_grid_trading']['grid'].replace(' ','').split('/')
     minerva.price_type=minerva.cfg['S_grid_trading']['trade_price_type']
@@ -161,7 +198,7 @@ def grid_trading(minerva, date):
                 grid_lv+=1
             grid_lv=min(grid_lv, len(dd_grid)-1)
         for idx, tgt in enumerate(minerva.port_tgts):
-            minerva.action_dict[tgt]=minerva.act_fund*grid_portion[grid_lv][idx+1]/100.0
+            minerva.action_dict[tgt]=minerva.act_fund_flow*grid_portion[grid_lv][idx+1]/100.0
         minerva.trade(date, call_from='DCA',price_type=price_tpye)
    
     else: 
@@ -169,7 +206,7 @@ def grid_trading(minerva, date):
         if signal != 0:
             for idx, tgt in enumerate(minerva.port_tgts):
                 grid_lv=int(signal)
-                minerva.action_dict[tgt]=minerva.act_fund*grid_portion[grid_lv-1][idx+1]/100.0
+                minerva.action_dict[tgt]=minerva.act_fund_flow*grid_portion[grid_lv-1][idx+1]/100.0
             minerva.trade(date, call_from='GRID_TRADING',price_type=price_tpye)
 
 def grid_trading_rebalance(minerva, date):
@@ -183,7 +220,7 @@ def grid_trading_rebalance(minerva, date):
  
     return action_dict   
 
-# =================== For postion schemes
+# =================== For postion schemes ===================
 def pos_prescribe(minerva, date):
     pos_dic={}
     tgts=minerva.port_tgts
@@ -235,7 +272,9 @@ def pos_seesaw(minerva, date):
         pos_dic[tgt]=(pos_dic[tgt]/sum_tgt)*(1-cash_portion)
     #print(f'drawdown: {drawdown}')
     return pos_dic
-# ================== For funding schemes
+
+
+# ================== For funding schemes ===================
 def fund_fixed(minerva, date):
     if date==minerva.dateseries[0]:
         return minerva.init_fund
@@ -260,30 +299,89 @@ def fund_financing_init(minerva):
     except KeyError:
         pass
     minerva.fin_nrdr=mathlib.ar2dr(const.NO_RISK_RETURN)
-    minerva.fin_fund=minerva.init_fund 
+    minerva.fin_fund=minerva.init_fund
+    minerva.fin_acc_pay=0.0 # accum interest payed
+    minerva.fin_pay_frq=utils.frq_to_frqCN(minerva.cfg['SCHEMER']['cash_frq'])
+    # fill messge template 
+    roll_date=minerva.dateseries[-1]
+    lender=minerva.meta_dic['贷款人']
+    borrower=minerva.meta_dic['借款人']
+    minerva.msg_dic={
+        'title_lst':[f'{lender}向{borrower}出借款项的每日结算报告',f'{roll_date.strftime("%Y/%m/%d")}'],
+        'msg_body':''}
+    minerva.fin_sup_contract=''
+     
 def fund_financing(minerva, date):
-    fin_act=minerva.FIN_ACT
+    if date==minerva.dateseries[0]:
+        pass
+    
     fund,dep_fund=0,0
     if date in minerva.cash_dates:
         fund=-(minerva.track.loc[date]['total_value']-minerva.fin_fund) # minus for outflow
+        minerva.fin_acc_pay-=fund
+        minerva.fin_acc_unpaid=0.0
+        if date==minerva.dateseries[-1]: 
+            minerva.msg_dic=utils.feed_msg_body(
+                minerva.msg_dic, f'<h2>【利息支付】：{date.strftime("%Y年%m月%d日")}借款人向贷款人支付当期利息'+\
+                    f'{utils.fmt_value(-fund,vtype="cny")}。</h2>')
+    else:
+        minerva.fin_acc_unpaid=minerva.track.loc[date]['total_value']-minerva.fin_fund
+    try:
+        fin_act=minerva.FIN_ACT
+    except AttributeError:
+        return fund
     if date in fin_act.index:
         act=fin_act.loc[date]['action']
         if act=='rate':
-            yoy=float(fin_act.loc[date]['value'])
+            yoy=float(fin_act.loc[date]['value'])/100.0
             minerva.fin_nrdr=mathlib.ar2dr(yoy)
             utils.write_log(
                 f'{print_prefix}[FINANCING] Refinancing signal captured, new rate: {utils.fmt_value(yoy,vtype="pct")} on {date.strftime("%Y-%m-%d")}.')
+            minerva.fin_sup_contract+=f'【利率调整】：经贷款人与借款人友好协商，自{date.strftime("%Y年%m月%d日")}（含）起，'+\
+                f'借款合约利率调整为{utils.fmt_value(yoy,vtype="pct")}。<br />'
+            if date==minerva.dateseries[-1]: 
+                minerva.msg_dic=utils.feed_msg_body(
+                    minerva.msg_dic, 
+                    f'<h2>【利率调整】：经贷款人与借款人友好协商，自{date.strftime("%Y年%m月%d日")}（含）起，'+\
+                        f'借款合约利率调整为{utils.fmt_value(yoy,vtype="pct")}。</h2>')
+
         elif act=='deposit':
             dep_fund=float(fin_act.loc[date]['value'])
             utils.write_log(
                 f'{print_prefix}[FINANCING] Deposit signal captured, flow: {utils.fmt_value(dep_fund,pos_sign=False)} on {date.strftime("%Y-%m-%d")}.')
             minerva.fin_fund+=dep_fund
+            if dep_fund>0:
+                minerva.fin_sup_contract+=f'【本金追加】：{date.strftime("%Y年%m月%d日")}，贷款人追加借出本金'+\
+                    f'{utils.fmt_value(dep_fund,vtype="cny",pos_sign=False)}，本金总额调整为{utils.fmt_value(minerva.fin_fund,vtype="cny",pos_sign=False)}。<br />'
+            else:
+                minerva.fin_sup_contract+=f'【本金支取】：{date.strftime("%Y年%m月%d日")}，贷款人支取借出本金'+\
+                    f'{utils.fmt_value(-dep_fund,vtype="cny",pos_sign=False)}，本金总额调整为{utils.fmt_value(minerva.fin_fund,vtype="cny",pos_sign=False)}。<br />'
+            if date==minerva.dateseries[-1]: 
+                if dep_fund>0:
+                    minerva.msg_dic=utils.feed_msg_body(
+                        minerva.msg_dic, 
+                        f'<h2>【本金追加】：{date.strftime("%Y年%m月%d日")}，贷款人追加借出本金'+\
+                        f'{utils.fmt_value(dep_fund,vtype="cny",pos_sign=False)}，当前本金总额为{utils.fmt_value(minerva.fin_fund,vtype="cny",pos_sign=False)}。</h2>')
+                else:
+                    minerva.msg_dic=utils.feed_msg_body(
+                        minerva.msg_dic, 
+                        f'<h2>【本金支取】：{date.strftime("%Y年%m月%d日")}，贷款人支取借出本金'+\
+                        f'{utils.fmt_value(-dep_fund,vtype="cny",pos_sign=False)}，当前本金总额为{utils.fmt_value(minerva.fin_fund,vtype="cny",pos_sign=False)}。</h2>')
         elif act=='payment':
             frq=fin_act.loc[date]['value']
             minerva.cash_dates=utils.gen_date_intervals(
                 minerva.dateseries, frq)
+            minerva.fin_pay_frq=utils.frq_to_frqCN(frq)
             utils.write_log(
                 f'{print_prefix}[FINANCING] Payment Frequency signal captured, shift to {frq} on {date.strftime("%Y-%m-%d")}.')
+            minerva.fin_sup_contract+=f'【付息频率调整】：经贷款人与借款人友好协商，自{date.strftime("%Y年%m月%d日")}（含）起，'+\
+                f'利息支付频率调整为{minerva.fin_pay_frq}。<br />'
+            if date==minerva.dateseries[-1]: 
+                minerva.msg_dic=utils.feed_msg_body(
+                    minerva.msg_dic, 
+                    f'<h2>【付息频率调整】：经贷款人与借款人友好协商，{date.strftime("%Y年%m月%d日")}起，'+\
+                    f'利息支付频率调整为{minerva.fin_pay_frq}。</h2>')
+        
     return fund+dep_fund # cash out
 def fund_mutable(minerva, date):
     if date==minerva.dateseries[0]:
@@ -317,7 +415,7 @@ def fund_dynamic(minerva, date):
             break
     return infund
 
-# ================== For cash schemes
+# ================== For cash schemes ===================
 def cash_fixed(minerva, date):
     return const.CASH_IN_HAND
 def cash_dynamic(minerva, date):
@@ -354,14 +452,13 @@ def cash_dynamic(minerva, date):
             break
     return min(const.CASH_IN_HAND*1.5,
         max(cash_portion_now,balance_portion,const.CASH_IN_HAND*0.5))
-# ================== For norisk schemes
+
+# ================== For norisk schemes ===================
 def norisk_fixed(minerva, date):
     NRDR=mathlib.ar2dr(const.NO_RISK_RETURN)
     return NRDR
 def norisk_dynamic(minerva, date):
     norisk=minerva.noriskhist
-    pretday=date+datetime.timedelta(days=-1)
-    while (pretday not in norisk.index) and (pretday>norisk.index[0]):
-        pretday=pretday-datetime.timedelta(days=1)
-    NRDR=mathlib.ar2dr(norisk.loc[pretday]['Close']/100)
+    NRDR=norisk.loc[date]['Close']
     return NRDR
+

@@ -11,14 +11,15 @@ print_prefix='lib.painter>>'
 
 def draw_perform_fig(
     df, tgts, fig_fn, 
-    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey'],withbase=True):
+    port_colors=['blue', 'red', 'purple', 'darkcyan', 'gold', 'grey', 'pink'],
+    withbase=True, financing=False, leverage=False,att_dic={}):
     # Calculate the daily return rate
 
 
     # Plot the three figures
     fig, ax = plt.subplots(nrows=4, sharex=True, figsize=(12,12))
     fig.subplots_adjust(hspace=0)
-    # ----------plot 0: NAV timeseries
+    # ----------plot 0: Total Assets, NAV timeseries
 
     total_days=(df.index[-1]-df.index[0]).days+1
     ax[0].plot(df.index, df['accu_fund'], 
@@ -30,9 +31,17 @@ def draw_perform_fig(
         color='lightgrey', linewidth=1.5)
     chg=utils.fmt_value(df.iloc[-1]["total_value"]-df.iloc[-1]["accu_fund"])
     ax[0].plot(df.index, df['total_value'], 
-        label=f'NAV: {utils.fmt_value(df.iloc[-1]["total_value"], pos_sign=False)} ({chg})', 
+        label=f'Total Assets: {utils.fmt_value(df.iloc[-1]["total_value"], pos_sign=False)} ({chg})', 
         color='blue')
- 
+    if leverage:
+        ax[0].plot(df.index, df['net_value'], 
+            label=f'NAV: {utils.fmt_value(df.iloc[-1]["net_value"], pos_sign=False)} ({chg})', 
+            color='darkgreen')
+        chg=utils.fmt_value(df.iloc[-1]["lev_value"]-df.iloc[0]["lev_value"])
+        ax[0].plot(df.index, df['lev_value'], 
+            label=f'Liability: {utils.fmt_value(df.iloc[-1]["lev_value"], pos_sign=False)} ({chg})', 
+            color='darkred')
+
     tgt_val=utils.fmt_value(
         df.iloc[-1]["cash"]/df.iloc[-1]["total_value"],vtype="pct",pos_sign=False)
     ax[0].fill_between(
@@ -50,15 +59,21 @@ def draw_perform_fig(
             label=f'{tgt} {tgt_val}')
         df_accu=df_accu+df[tgt+'_value']
     #ax[0].set_yscale('log')
-    ax[0].set_ylabel('NAV')
+    
+    basics_str='\n'.join([ f'{key}: {utils.fmt_value(att_dic[key])}' for key in att_dic])
+    ax[0].text(0.3, 0.95, basics_str, transform=ax[0].transAxes, color='grey',
+        bbox=dict(facecolor='white', alpha=0.5, edgecolor='lightgrey'),
+        fontsize=const.TINY_SIZE, verticalalignment='top')
+    
+    ax[0].set_ylabel('Value')
     ax[0].legend(loc='upper left',fontsize=const.SM_SIZE)
     ax[0].set_title('Portfolio Performance valid from '+str(df.index[0].date())+' to '+str(df.index[-1].date())+f' ({total_days} days)')
 
     # ------------plot 1: return rate
     if df.iloc[-1]['accu_fund']>0:
         ax[1].plot(df.index, df['fund_change'], 
-            label=f'ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
-            color='red', linewidth=1)
+            label=f'Total Assets ARR ({utils.fmt_value(df.iloc[-1]["fund_change"],vtype="pct")})',
+            color='blue', linewidth=1)
     if withbase:
         cagr_str=utils.fmt_value(mathlib.cagr(df.iloc[-1]['baseline_return']-1,total_days),vtype="pct")
         ax[1].plot(df.index, df['baseline_return']-1, 
@@ -67,14 +82,19 @@ def draw_perform_fig(
     twr=df.iloc[-1]["accum_return"]-1
     cagr_str=utils.fmt_value(mathlib.cagr(twr,total_days),vtype="pct")
     ax[1].plot(df.index, df['accum_return']-1, 
-               label=f'TWR ({utils.fmt_value(twr,vtype="pct")}|{cagr_str})', 
+               label=f'Total Assets TWR ({utils.fmt_value(twr,vtype="pct")}|{cagr_str})', 
                color='blue')
-    
+    if leverage:
+        twr=df.iloc[-1]["accum_net_return"]-1
+        cagr_str=utils.fmt_value(mathlib.cagr(twr,total_days),vtype="pct")
+        ax[1].plot(df.index, df['accum_net_return']-1,
+                   label=f'NAV TWR ({utils.fmt_value(twr,vtype="pct")}|{cagr_str})',
+                   color='darkgreen') 
     no_risk=df['norisk_total_value']/df['accu_fund']
     if df.iloc[-1]['accu_fund']>0:
         ax[1].plot(df.index, no_risk-1, 
-               label=f'NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
-               color='green', linewidth=1.5)
+               label=f'Total Assets NoRisk ARR ({utils.fmt_value(no_risk[-1]-1,vtype="pct")})', 
+               color='grey', linewidth=1.5)
     
     ax[1].axhline(y=0.0, linewidth=1, color='blue', linestyle='--')
     ax[1].tick_params(axis='y', labelcolor='blue')
@@ -86,8 +106,17 @@ def draw_perform_fig(
     pct_dr=np.exp(df['daily_return'])
     # Resample the data to monthly and plot the bar chart on the right y-axis
     mon_return=pct_dr.resample('M').apply(lambda x: x.prod() - 1)
+    
     width=20
-    colors = ['green' if x > 0 else 'red' for x in mon_return]
+    if leverage:
+        width=width/2
+        pct_dr_net=np.exp(df['daily_net_return'])
+        mon_net_return=pct_dr_net.resample('M').apply(lambda x: x.prod() - 1)
+        colors = ['darkgreen' if x > 0 else 'darkred' for x in mon_net_return]
+        ax_bar.bar(
+            mon_net_return.index- pd.offsets.MonthBegin(1) + pd.Timedelta(width*1.5, 'D'), mon_net_return, 
+            width=width, color=colors, alpha=0.5, label='Monthly Net Return')
+    colors = ['blue' if x > 0 else 'coral' for x in mon_return]
     ax_bar.bar(
         mon_return.index- pd.offsets.MonthBegin(1) + pd.Timedelta(width/2, 'D'), mon_return, 
         width=width, color=colors, alpha=0.3, label='Monthly Return')
@@ -110,79 +139,103 @@ def draw_perform_fig(
         ax[1].set_yscale('linear')
     '''
     # ------------plot 2: maximum drawdown
-    if withbase:    
-        ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', alpha=0.5, 
-            label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
-        ax[2].fill_between(
-            df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
-    max_str=utils.fmt_value(-df["drawdown"].max(),vtype="pct")
-    latest_str=utils.fmt_value(-df["drawdown"].iloc[-1],vtype="pct")
-    ax[2].plot(df.index, -df['drawdown'], alpha=0.3, 
-               label=f'Drawdown (Max: {max_str}|Latest: {latest_str})', color='blue')
-    ax[2].fill_between(
-        df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='dodgerblue',alpha=0.5)
-    
-    hlines=[(0.0,'black',1,'-'),(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
-            (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
-            (-0.25,'orange',1,'--'),(-0.3,'red',1,'--')]
-    if withbase:
-        for hline in hlines:
-            if abs(hline[0])<df['baseline_drawdown'].max():
-                ax[2].axhline(y=hline[0], color=hline[1], linewidth=hline[2], 
-                            linestyle=hline[3])
-    
-    
-    ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
-    ax[2].set_ylabel('Drawdown')
-
-    df['drawperiod'] = (df['drawdown'] > 0)
-    # calculate periods when all values are larger than 0
-    df['group'] = (df['drawperiod'] != df['drawperiod'].shift()).cumsum()
-    df['period'] = df.groupby('group')['drawperiod'].transform('cumsum')
-    df['period'] = df['period'].diff(periods=-1)
-    
+    if not financing: 
         
-    longest_periods = df.sort_values('period', ascending=False).head(5)['group'].unique()
-    df['period_mark'] = df['group'].apply(
-        lambda x: df.loc[df['group'] == x, 'period'].iloc[0] if x in longest_periods else 0)
+        # net value drawdown
+        if leverage:
+            max_str=utils.fmt_value(-df["net_drawdown"].max(),vtype="pct")
+            latest_str=utils.fmt_value(-df["net_drawdown"].iloc[-1],vtype="pct")
+            ax[2].plot(df.index, -df['net_drawdown'], alpha=0.5, 
+                    label=f'NAV_Drawdown (Max: {max_str}|Latest: {latest_str})', color='darkred')
+            ax[2].fill_between(
+                df.index, -df['net_drawdown'], 0, where=df['net_drawdown']>0, color='lightcoral',alpha=0.5)
     
-    # 5 major drawdown periods
-    for period in longest_periods:
-        start_date = df.loc[df['group'] == period].index[0]
-        end_date = df.loc[df['group'] == period].index[-1]
-        max_lv=df['drawdown'].loc[start_date:end_date].max()
-        if max_lv<0.05:
-            continue
-        ax[2].axvspan(start_date, end_date, alpha=0.3, color='lightgrey')
-        x,y=start_date,-max_lv
-        ax[2].text(x, y/2, 
-            f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
-            ha='left', va='bottom', fontsize=const.SM_SIZE,
-            weight='bold')
-    # the last drawdown period, if any
-    if df['drawperiod'].iloc[-1]>0:
-        idx=-1
-        while (df['drawperiod'].iloc[idx]>0)and (abs(idx)<len(df)):
-            idx-=1
-        start_date = df.index[idx]
-        end_date = df.index[-1]
-        max_lv=df['drawdown'].loc[start_date:end_date].max()
-        ax[2].axvspan(start_date, end_date, alpha=0.4, color='coral')
-        x,y=start_date,-max_lv
-        ax[2].text(x, -0.05, 
-            f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
-            ha='left', va='bottom', fontsize=const.SM_SIZE,
-            weight='bold')
- 
-    #ax_drawperiod=ax[2].twinx()
-    #ax_drawperiod.plot(df.index, df['period'], color='green', linewidth=1)
-
-
-    # ------------plot 3: funding pulse
-    #fund_pulse=df['accu_fund'].diff()
-    #ax[3].plot(df.index, fund_pulse, color='red', linewidth=1,alpha=0.7)
-    #ax[3].set_ylabel('Cash Flow')
+        if withbase:    
+            ax[2].plot(df.index, -df['baseline_drawdown'], color='orange', alpha=0.5, 
+                label=f'Baseline (Max: {utils.fmt_value(-df["baseline_drawdown"].max(),vtype="pct")})')
+            ax[2].fill_between(
+                df.index, -df['baseline_drawdown'], 0, where=df['baseline_drawdown']>0, color='yellow', alpha=0.3)
+        
+        # total assets drawdown
+        max_str=utils.fmt_value(-df["drawdown"].max(),vtype="pct")
+        latest_str=utils.fmt_value(-df["drawdown"].iloc[-1],vtype="pct")
+        ax[2].plot(df.index, -df['drawdown'], alpha=0.3, 
+                label=f'Drawdown (Max: {max_str}|Latest: {latest_str})', color='blue')
+        ax[2].fill_between(
+            df.index, -df['drawdown'], 0, where=df['drawdown']>0, color='dodgerblue',alpha=0.5)
+        
+        
+        hlines=[(0.0,'black',1,'-'),(-0.05,'green',0.5,':'),(-0.1,'green',0.5,':'),
+                (-0.15,'green',0.5,'--'),(-0.2,'orange',0.5,'--'),
+                (-0.25,'orange',1,'--'),(-0.3,'red',1,'--')]
+        if withbase:
+            for hline in hlines:
+                if abs(hline[0])<df['baseline_drawdown'].max():
+                    ax[2].axhline(y=hline[0], color=hline[1], linewidth=hline[2], 
+                                linestyle=hline[3])
+        
+        if leverage:
+            entry='net_drawdown'
+        else:
+            entry='drawdown'
+        df.loc[:,'drawperiod'] = df[entry].values > 0
+        # calculate periods when all values are larger than 0
+        df.loc[:, 'group'] = (df['drawperiod'] != df['drawperiod'].shift()).cumsum()
+        df.loc[:, 'period'] = df.groupby('group')['drawperiod'].transform('cumsum')
+        df.loc[:, 'period'] = df['period'].diff(periods=-1)
+        
+            
+        longest_periods = df.sort_values('period', ascending=False).head(5)['group'].unique()
+        df.loc[:, 'period_mark'] = df['group'].apply(
+            lambda x: df.loc[df['group'] == x, 'period'].iloc[0] if x in longest_periods else 0)
+        
+        # 5 major drawdown periods
+        for period in longest_periods:
+            start_date = df.loc[df['group'] == period].index[0]
+            end_date = df.loc[df['group'] == period].index[-1]
+            max_lv=df[entry].loc[start_date:end_date].max()
+            if max_lv<0.05:
+                continue
+            ax[2].axvspan(start_date, end_date, alpha=0.3, color='lightgrey')
+            x,y=start_date,-max_lv
+            ax[2].text(x, y/2, 
+                f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
+                ha='left', va='bottom', fontsize=const.SM_SIZE,
+                weight='bold')
+        # the last drawdown period, if any
+        if df['drawperiod'].iloc[-1]>0:
+            idx=-1
+            while (df['drawperiod'].iloc[idx]>0)and (abs(idx)<len(df)):
+                idx-=1
+            start_date = df.index[idx]
+            end_date = df.index[-1]
+            max_lv=df[entry].loc[start_date:end_date].max()
+            ax[2].axvspan(start_date, end_date, alpha=0.4, color='coral')
+            x,y=start_date,-max_lv
+            ax[2].text(x, -0.05, 
+                f'{utils.fmt_value(y,vtype="pct")}\n({(end_date-start_date).days}days)', 
+                ha='left', va='bottom', fontsize=const.SM_SIZE,
+                weight='bold')
     
+        #if leverage:
+        ax_lev = ax[2].twinx()
+        lev_r=100*df['lev_ratio']
+        ax_lev.plot(
+            df.index, lev_r, label=f'Leveraged Ratio', color='red',
+            linewidth=1, alpha=0.5)
+        ax_lev.set_ylabel('Leveraged Ratio', color='red')
+        ax_bar.tick_params(axis='y', labelcolor='red')
+        ax[2].legend(loc='lower left',fontsize=const.SM_SIZE)
+        ax[2].set_ylabel('Drawdown')
+    
+    else:
+        # ------------plot 2: funding pulse
+        fund_pulse=df['accu_fund'].diff()
+        ax[2].plot(df.index, fund_pulse, color='red', linewidth=1,alpha=0.7)
+        ax[2].set_ylabel('Cash Flow')
+    
+    
+    # ------------plot 3: annual return
     # calculate cumulative sum of log daily return
     cumy_return = np.exp(df['daily_return'].groupby(df.index.year).cumsum())-1
     cumy_return.loc[(df.index.month == 1) & (df.index.day == 1)] = np.nan
@@ -190,17 +243,51 @@ def draw_perform_fig(
     #cum_log_return.index = cum_log_return.index.map(lambda x: pd.date_range(start=x.date(), periods=len(x), freq='D'))
     ax[3].plot(
         cumy_return.index, cumy_return, color='blue', linewidth=1, alpha=0.5)
-    ax[3].set_ylabel('Yearly Cumulative Return')
+    if leverage:
+        cumy_return = np.exp(df['daily_net_return'].groupby(df.index.year).cumsum())-1
+        cumy_return.loc[(df.index.month == 1) & (df.index.day == 1)] = np.nan
+        #cum_log_return = cum_log_return.groupby(cum_log_return.index.year).apply(lambda x: pd.Series(x).cumsum())
+        #cum_log_return.index = cum_log_return.index.map(lambda x: pd.date_range(start=x.date(), periods=len(x), freq='D'))
+        ax[3].plot(
+            cumy_return.index, cumy_return, color='darkgreen', linewidth=1, alpha=0.5)
+    
+    ax[3].set_ylabel('Annual Cumulative Return')
 
     ax_bar2=ax[3].twinx()
     # Resample the data to monthly and plot the bar chart on the right y-axis
     yr_return=pct_dr.resample('Y').apply(lambda x: x.prod() - 1)
     width=365
-    colors = ['green' if x > 0 else 'red' for x in yr_return]
+    if leverage: 
+        width=width/2
+        yr_net_return=pct_dr_net.resample('Y').apply(lambda x: x.prod() - 1)
+        colors = ['darkgreen' if x > 0 else 'darkred' for x in yr_net_return]
+        bars2=ax_bar2.bar(
+            #yr_return.index- pd.offsets.YearBegin(1), yr_return, 
+            yr_net_return.index- pd.offsets.YearBegin(1) + pd.Timedelta(width*1.5, 'D'), yr_net_return, 
+            width=width, color=colors, alpha=0.5, label='Annual Net Return',
+            edgecolor='black', linewidth=1)
+        # add value on top of each bar
+        for bar in bars2:
+            x = bar.get_x() + bar.get_width() / 2
+            y = bar.get_height()
+            ax_bar2.text(x, y, utils.fmt_value(y,vtype="pct"), 
+                ha='center', va='bottom', fontsize=const.SM_SIZE,
+                weight='bold')
+    colors = ['dodgerblue' if x > 0 else 'coral' for x in yr_return]
     bars=ax_bar2.bar(
+        #yr_return.index- pd.offsets.YearBegin(1), yr_return, 
         yr_return.index- pd.offsets.YearBegin(1) + pd.Timedelta(width/2, 'D'), yr_return, 
-        width=width, color=colors, alpha=0.4, label='Yearly Return',
+        width=width, color=colors, alpha=0.5, label='Annual Return',
         edgecolor='black', linewidth=1)
+    # add value on top of each bar
+    for bar in bars:
+        x = bar.get_x() + bar.get_width() / 2
+        y = bar.get_height()
+        ax_bar2.text(x, y, utils.fmt_value(y,vtype="pct"), 
+            ha='center', va='bottom', fontsize=const.SM_SIZE,
+            weight='bold')
+
+
     hlines=[(0.5,'green',0.5,'--'),(0.25,'green',0.5,':'),
             (0,'grey',1,'--'),(-0.1,'red',0.5,':'),
             (-0.2,'red',0.5,'--'),(-0.3,'red',1.0,'--')]
@@ -209,20 +296,13 @@ def draw_perform_fig(
             y=hline[0], color=hline[1], linewidth=hline[2], linestyle=hline[3])
     ax_bar2.set_ylim(ax[3].get_ylim()) 
 
-    # add value on top of each bar
-    for bar in bars:
-        x = bar.get_x() + bar.get_width() / 2
-        y = bar.get_height()
-        ax_bar2.text(x, y, utils.fmt_value(y,vtype="pct"), 
-            ha='center', va='bottom', fontsize=const.SM_SIZE,
-            weight='bold')
     # Set the x-axis label and title
     plt.xlabel('Date')
 
     # Show the plot
     #plt.show()
     plt.savefig(fig_fn, bbox_inches='tight', dpi=const.DPI)
-    os.system(f'convert +dither -colors 256 {fig_fn} {fig_fn}')
+    os.system(f'magick +dither {fig_fn} {fig_fn}')
 def fast_plot(oculus):
     # Time series
     ticker=oculus.ticker
@@ -342,19 +422,63 @@ def append_dic_table(dic, dic_new, column_name='Value', index_name='Index'):
         for k,v in dic_new.items():
             dic[k].append(v)
     return dic
-def dic2html(table_data):
-    # Get the list of column names from the dictionary keys
-    column_names = table_data['header']
+
+def dic2html_CN(table_data):
+    
     # Create the HTML table
     table_html = '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">'
-    # Add the table header row
-    table_html += '<tr>'
-    for column_name in column_names:
-        table_html += f'<th style="font-weight: bold; padding: 8px;">{column_name}</th>'
-    table_html += '</tr>'
+    try: 
+        column_names = table_data['header']
+        # Add the table header row
+        table_html += '<tr>'
+        for column_name in column_names:
+            table_html += f'<th style="font-weight: bold; padding: 8px;">{column_name}</th>'
+        table_html += '</tr>'
+        header = True
+    except KeyError:
+        # no header
+        header=False
+    
+    # Get the list of column names from the dictionary keys
     # Add the table data rows
     for i, (k, v) in enumerate(table_data.items()):
-        if i == 0:
+        if header:
+            header=False
+            continue
+        table_html += '<tr>'
+        # Add alternating background colors to the table rows
+        if i % 2 == 0:
+            bg_color = '#f9f9f9'
+        else:
+            bg_color = '#ddd'
+        table_html += f'<td style="font-weight: bold; background-color: {bg_color};padding: 8px;">{k}</td>'
+        table_html += f'<td style="background-color: {bg_color};  padding: 8px;">{v}</td>'
+        table_html += '</tr>'
+    table_html += '</table>'
+    return table_html
+
+def dic2html(table_data):
+    
+    
+    # Create the HTML table
+    table_html = '<table style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;">'
+    try: 
+        column_names = table_data['header']
+        # Add the table header row
+        table_html += '<tr>'
+        for column_name in column_names:
+            table_html += f'<th style="font-weight: bold; padding: 8px;">{column_name}</th>'
+        table_html += '</tr>'
+        header = True
+    except KeyError:
+        # no header
+        header=False
+    
+    # Get the list of column names from the dictionary keys
+    # Add the table data rows
+    for i, (k, v) in enumerate(table_data.items()):
+        if header:
+            header=False
             continue
         table_html += '<tr>'
         # Add alternating background colors to the table rows

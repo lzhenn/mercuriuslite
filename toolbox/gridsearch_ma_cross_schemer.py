@@ -23,13 +23,13 @@ def main():
     #short_ma = [3,4,5,6,7,9,12]
     
     long_ma = [50, 70, 100, 120, 150, 200, 220, 280, 300, 400, 500, 600, 800]
-    long_ma = [80,90,95,100,105,110]
+    #long_ma = [80,90,95,100,105,110]
     #long_ma = [150, 175, 200, 210, 220, 250]
     #long_ma = [15,20,30,50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 210, 220, 250, 300]
     combines = list(itertools.product(short_ma, long_ma))
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=6) as executor:
         for c in combines:
             executor.submit(run_strategy, c)
-
 if __name__ == '__main__':
     main()
